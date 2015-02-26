@@ -1,0 +1,26 @@
+{
+  "name": "enlived-jsx",
+  "version": "0.0.1",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/awetzel/enlived-jsx"
+  },
+  "keywords": [
+    "jsx",
+    "enlive",
+    "css",
+    "react",
+    "html"
+  ],
+  "author": "Arnaud Wetzel <arnaud.wetzel@gmail.com> (https://github.com/awetzel)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/awetzel/enlived-jsx/issues"
+  },
+  "homepage": "https://github.com/awetzel/enlived-jsx"
+}
