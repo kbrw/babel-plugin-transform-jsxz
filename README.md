@@ -1,6 +1,10 @@
 enlived-jsx
 ===========
 
+**NOT Production Ready Yet !!**
+
+TODO : jstransform visitor specification
+
 Function to generate JSX components from HTML files and CSS
 selectors with an " enlive like" semantic.
 
