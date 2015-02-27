@@ -1,31 +1,32 @@
 var cheerio = require('cheerio'), fs = require('fs')
 
 module.exports = function (path,selector,transfo,config){
-  var dom = cheerio.load(fs.readFileSync(path).toString())(selector)
-  domTransfo(dom,transfo)
-  return dom2JSX(dom.get(0),config)
+  var loader = cheerio.load(fs.readFileSync(path).toString())
+  var root = loader(selector)
+  domTransfo(root,transfo,loader)
+  return dom2JSX(root.get(0),config)
 }
 
-function domReplaceAttr(replace_in,attr,replace_spec,root){
+function domReplaceAttr(replace_in,attr,replace_spec,loader){
   var replace_by = (typeof replace_spec === 'string') 
-    ? replace_spec : replace_spec(replace_in.attr(attr),replace_in,root)
-  replace_in.attr(attr,'{'+replace_by+'}')
+    ? replace_spec : replace_spec(replace_in.attr(attr),replace_in,loader)
+  if (replace_by) replace_in.attr(attr,'{'+replace_by+'}')
 }
-function domReplaceInner(replace_in,replace_spec,root){
+function domReplaceInner(replace_in,replace_spec,loader){
   var replace_by = (typeof replace_spec === 'string') 
-    ? replace_spec : replace_spec(replace_in.html(),replace_in,root)
-  replace_in.html('{'+replace_by+'}')
+    ? replace_spec : replace_spec(replace_in.html(),replace_in,loader)
+  if (replace_by) replace_in.html('{'+replace_by+'}')
 }
 
-function domTransfo(elem,transfo){
+function domTransfo(elem,transfo,loader){
   for(var selector in transfo){
       var replace_in = elem.find(selector), replace_spec = transfo[selector],
           is_attr_transfo = typeof replace_spec === 'object'
       if(is_attr_transfo)
         for(var attr in replace_spec)
-          domReplaceAttr(replace_in,attr,replace_spec[attr],elem)
+          domReplaceAttr(replace_in,attr,replace_spec[attr],loader)
       else
-        domReplaceInner(replace_in,replace_spec,elem)
+        domReplaceInner(replace_in,replace_spec,loader)
   }
 }
 
