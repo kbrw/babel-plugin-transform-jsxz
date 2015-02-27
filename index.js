@@ -1,7 +1,8 @@
 var cheerio = require('cheerio'), fs = require('fs')
 
 module.exports = function (path,selector,transfo,config){
-  var loader = cheerio.load(fs.readFileSync(path).toString())
+  var opts = {lowerCaseAttributeNames: false, lowerCaseTags: false}
+  var loader = cheerio.load(fs.readFileSync(path).toString(),opts)
   var root = loader(selector)
   domTransfo(root,transfo,loader)
   return dom2JSX(root.get(0),config)
@@ -39,7 +40,6 @@ module.exports.defaultConfig = defaultConfig
 
 //// custom JSX2HTML (inspired by npm project) to use directly HTMLParser2 elem API (and not DOM)
 //// and to convert an attribute starting with "{" directly without string quotes
-////
 var ATTRIBUTE_MAPPING = {'for': 'htmlFor','class': 'className'}
 var ELEMENT_ATTRIBUTE_MAPPING = {'input': {'checked': 'defaultChecked','value': 'defaultValue'}}
 
@@ -105,6 +105,10 @@ function stylesObj2JSX(styles){
     output.push(hyphenToCamelCase(key) + ': ' + toJSXValue(styles[key]))
   }
   return output.join(', ')
+}
+
+function normalizeTag(tag){
+  return tag
 }
 
 var dom2JSXState = function(config) {
@@ -218,7 +222,7 @@ dom2JSXState.prototype = {
   },
 
   _beginVisitElement: function(node) {
-    var tagName = node.name.toLowerCase()
+    var tagName = normalizeTag(node.name)
     var attributes = []
     for (var attr in node.attribs) attributes.push(this._getElementAttribute(node,attr,node.attribs[attr]))
 
@@ -229,7 +233,7 @@ dom2JSXState.prototype = {
 
   _endVisitElement: function(node) {
     this.output = trimEnd(this.output, this.config.indent)
-    this.output += !node.firstChild ? ' />' : ('</' + node.name.toLowerCase() + '>')
+    this.output += !node.firstChild ? ' />' : ('</' + normalizeTag(node.name) + '>')
   },
 
   _visitText: function(node) {
