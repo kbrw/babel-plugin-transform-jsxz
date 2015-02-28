@@ -1,47 +1,173 @@
-var cheerio = require('cheerio'), fs = require('fs')
+var htmlParser = require("htmlparser2"), 
+    cssSelector = require("css-select"),
+    fs = require("fs"),
+    recast = require("recast"),
+    types = require("ast-types"),
+    n = types.namedTypes,
+    b = types.builders
 
-module.exports = function (path,selector,transfo,config){
-  var opts = {lowerCaseAttributeNames: false, lowerCaseTags: false}
-  var loader = cheerio.load(fs.readFileSync(path).toString(),opts)
-  var root = loader(selector)
-  domTransfo(root,transfo,loader)
-  return dom2JSX(root.get(0),config)
+function parseJSXsSpec(ast,sourceFile,callback){
+  function error(msg,sourceAst){
+    var err = new Error()
+    err.message = msg
+    err.name = "JSXs Exception"
+    err.fileName = sourceFile
+    err.lineNumber = sourceAst.loc.start.line
+    err.columnNumber = sourceAst.loc.start.column
+    err.stack = err.name+": "+msg+"\n    at "+sourceAst.type+" ("+sourceFile+":"+err.lineNumber+":"+err.columnNumber+")\n"
+    throw err
+  }
+  var opentag = ast.openingElement
+  var htmlPathAttr = opentag.attributes.filter(function(attr){return attr.name.name == "file"})[0]
+  if(!htmlPathAttr)
+    error("jsxZ attribute 'file' necessary",path.node)
+  if(htmlPathAttr.value.type !== 'Literal')
+    error("jsxZ 'file' must be an hardcoded string",htmlPathAttr.value)
+  var htmlPath = htmlPathAttr.value.value
+
+  var selectorAttr = opentag.attributes.filter(function(attr){return attr.name.name == "sel"})[0]
+  if(selectorAttr && selectorAttr.value.type !== 'Literal')
+    error("jsxZ 'sel' must be an hardcoded CSS selector",selectorAttr.value)
+  var rootSelector = selectorAttr && selectorAttr.value.value
+
+  transfos = ast.children
+    .filter(function(c){return c.type==='XJSElement'})
+    .map(function(c){
+      if(c.openingElement.name.name !== "Z")
+        error("Only accepted childs for jsxZ are 'Z'",c.openingElement)
+      var selectorAttr = c.openingElement.attributes.filter(function(attr){return attr.name.name == "sel"})[0]
+      if(!selectorAttr || selectorAttr.value.type !== 'Literal')
+        error("jsxZ 'sel' must be an hardcoded CSS selector",selectorAttr.value)
+      
+      var swapAttr = c.openingElement.attributes.filter(function(attr){return attr.name.name == "swap"})[0]
+      var swap = swapAttr && (swapAttr.value.value == "true")
+
+      var otherAttrs = c.openingElement.attributes.filter(function(attr){ return attr.name.name !== 'swap' && attr.name.name !== 'sel'})
+      return {selector: selectorAttr.value.value, swap: swap, attrs: otherAttrs, children: c.children}
+    })
+
+  fs.readFile(htmlPath,function(err,data){
+    if(err) error("Impossible to read html file "+htmlPath,htmlPathAttr.value)
+    callback({htmlFile: data.toString(), htmlPath: htmlPath, rootSelector:  rootSelector, transfos: transfos})
+  })
 }
 
-function domReplaceAttr(replace_in,attr,replace_spec,loader){
-  var replace_by = (typeof replace_spec === 'string') 
-    ? replace_spec : replace_spec(replace_in.attr(attr),replace_in,loader)
-  if (replace_by) replace_in.attr(attr,'{'+replace_by+'}')
-}
-function domReplaceInner(replace_in,replace_spec,loader){
-  var replace_by = (typeof replace_spec === 'string') 
-    ? replace_spec : replace_spec(replace_in.html(),replace_in,loader)
-  if (replace_by) replace_in.html('{'+replace_by+'}')
+function parseDom(jsxZ,callback){
+  var parser = new htmlParser.Parser(
+    new htmlParser.DomHandler(function (error, dom) {
+      if (error) throw new Error("Too much malformed HTML "+jsxZ.htmlPath)
+      if (jsxZ.rootSelector){
+        dom = cssSelector.selectOne(jsxZ.rootSelector,dom)
+        if (!dom) throw new Error("selector "+jsxZ.rootSelector+" does not match any node in "+ jsxZ.htmlPath)
+      }
+      callback(dom)
+    }))
+  parser.write(jsxZ.htmlFile)
+  parser.done()
 }
 
-function domTransfo(elem,transfo,loader){
-  for(var selector in transfo){
-      var replace_in = elem.find(selector), replace_spec = transfo[selector],
-          is_attr_transfo = typeof replace_spec === 'object'
-      if(is_attr_transfo)
-        for(var attr in replace_spec)
-          domReplaceAttr(replace_in,attr,replace_spec[attr],loader)
-      else
-        domReplaceInner(replace_in,replace_spec,loader)
+function parseSourceAst(sourceFile,callback){
+  fs.readFile(sourceFile,function(err,data){
+    if (err) throw new Error("impossible to find source file "+sourceFile)
+    var sourceAst = recast.parse(data.toString())
+    var jsxZPaths = []
+    types.visit(sourceAst.program.body,{
+      visitXJSElement: function(path){
+        this.traverse(path)
+        if(path.node.openingElement.name.name === "jsxZ") jsxZPaths.push(path)
+      }
+    })
+    callback(sourceAst,jsxZPaths)
+  })
+}
+
+function domStyleToJSX(style){
+  return null
+}
+
+var ATTRIBUTE_MAPPING = {for: 'htmlFor',class: 'className'}
+var ELEMENT_ATTRIBUTE_MAPPING = {input: {checked: 'defaultChecked',value: 'defaultValue'}}
+function domAttrToJSX(tag,attrName,attrValue){
+  var astAttrName = (ELEMENT_ATTRIBUTE_MAPPING[tag] && ELEMENT_ATTRIBUTE_MAPPING[tag][attrName])
+                    || ATTRIBUTE_MAPPING[attrName] || attrName
+  if (tag === 'style'){
+    var astAttrValue = domStyleToJSX(attrValue)
+  }else if(isNumeric(attrValue)){
+    var astAttrValue = b.xjsExpressioncontainer(
+                         b.literal(parseInt(attrValue, 10)))
+  }else{
+    var astAttrValue = b.literal(attrValue)
+  }
+  return b.xjsAttribute(b.xjsIdentifier(astAttrName),astAttrValue)
+}
+
+var tagIndex = 0
+function domToAst(dom){
+  tagIndex++
+  if (dom.type==='tag'){
+    var astTag = dom.name.toLowerCase()
+    var astAttribs = Object.keys(dom.attribs).map(function(attrName){
+      return domAttrToJSX(astTag,attrName,dom.attribs[attrName])
+    })
+    var ast = b.xjsElement(
+      b.xjsOpeningElement(b.xjsIdentifier(astTag),astAttribs),
+      b.xjsClosingElement(b.xjsIdentifier(astTag)),
+        dom.children.filter(
+          function(child){return child.type === 'text' || child.type === 'tag'}
+        ).map(domToAst))
+    ast.tagIndex = tagIndex.toString() // associate tag ast node to dom to map selector to ast transfos
+    dom.tagIndex = tagIndex.toString() // use string index to use object as hash map
+    return ast
+  }else if(dom.type==='text'){
+    return b.literal(dom.data)
   }
 }
 
-var defaultConfig = {
-  createClass: true,
-  indent: '  ',
-  initLevel: 0
+function searchTransfosByTagIndex(jsxZ,dom){
+  var map = {}
+  jsxZ.transfos.map(function(transfo){
+    var matchingNodes = cssSelector(transfo.selector,dom)
+    if (matchingNodes.length == 0){
+      console.warn("Transfo "+transfo.selector+" does not match anything")
+      return []
+    }
+    matchingNodes.map(function(dom){
+      map[dom.tagIndex] = JSON.parse(JSON.stringify(transfo))
+    })
+  })
+  return map
 }
-module.exports.defaultConfig = defaultConfig
 
-//// custom JSX2HTML (inspired by npm project) to use directly HTMLParser2 elem API (and not DOM)
-//// and to convert an attribute starting with "{" directly without string quotes
-var ATTRIBUTE_MAPPING = {'for': 'htmlFor','class': 'className'}
-var ELEMENT_ATTRIBUTE_MAPPING = {'input': {'checked': 'defaultChecked','value': 'defaultValue'}}
+function applyTransfo(path,transfo){
+  if(transfo.swap) path.get().replace(transfo.children)
+  else path.get("children").replace(transfo.children)
+}
+
+module.exports = function (sourceFile,callback){
+  parseSourceAst(sourceFile,function(sourceAst,jsxZPaths){
+    var remaining = jsxZPaths.length
+    function done(){ remaining--; if(remaining === 0)
+      callback(recast.prettyPrint(sourceAst).code)
+    }
+    jsxZPaths.map(function(path){
+      parseJSXsSpec(path.node,sourceFile,function(jsxZ){
+        parseDom(jsxZ,function(dom){
+          var domAst = domToAst(dom)
+          var transfosByTagIndex = searchTransfosByTagIndex(jsxZ,dom)
+          types.visit(domAst,{
+            visitXJSElement: function(subpath){
+              this.traverse(subpath)
+              if (transfo=transfosByTagIndex[subpath.node.tagIndex])
+                applyTransfo(subpath,transfo)
+            }
+          })
+          path.get().replace(domAst)
+          done()
+        })
+      })
+    })
+  })
+}
 
 function trimEnd(haystack, needle) {
   return haystack.endsWith(needle) ? haystack.slice(0, -needle.length) : haystack
@@ -50,9 +176,6 @@ function hyphenToCamelCase(string) {
   return string.replace(/-(.)/g, function(match, chr) {
     return chr.toUpperCase()
   })
-}
-function isElement(node){
-  return node.type === "tag" || node.type === "script" || node.type === "style"
 }
 function toJSXValue(value) {
   if (isNumeric(value)) {
@@ -106,185 +229,3 @@ function stylesObj2JSX(styles){
   }
   return output.join(', ')
 }
-
-function normalizeTag(tag){
-  return tag
-}
-
-var dom2JSXState = function(config) {
-  config = config || {}
-  this.config = {}
-  this.config.createClass = config.createClass || defaultConfig.createClass || true
-  this.config.indent = config.indent || defaultConfig.indent || true
-  this.config.initLevel = config.initLevel || defaultConfig.initLevel || 0
-}
-dom2JSXState.prototype = {
-  convert: function(containerEl) {
-    this.output = ''
-    this.level = this.config.initLevel
-
-    if (this.config.createClass) {
-      this.output = 'React.createClass({\n'
-      this.output += this.config.indent.repeat(this.level) + 'render: function() {' + "\n"
-      this.output += this.config.indent.repeat(this.level + 1) + 'return (\n'
-    }
-
-    if (this._onlyOneTopLevel(containerEl)) {
-      // Only one top-level element, the component can return it directly
-      // No need to actually visit the container element
-      this._traverse(containerEl)
-    } else {
-      // More than one top-level element, need to wrap the whole thing in a
-      // container.
-      this.output += this.config.indent.repeat(this.level + 3) 
-      this.level++
-      this._visit(containerEl)
-      this.level--
-    }
-    this.output = this.output.trim() + '\n'
-    this.level = this.config.initLevel
-    if (this.config.createClass) {
-      this.output += this.config.indent.repeat(this.level + 1) + ')\n'
-      this.output += this.config.indent.repeat(this.level) + '}\n'
-      var close_level = (this.level > 0) ? this.level-1 : 0
-      this.output += this.config.indent.repeat(close_level) + '})'
-    }
-    return this.output
-  },
-
-  _cleanInput: function(html) {
-    // Remove unnecessary whitespace
-    html = html.trim()
-    // Ugly method to strip script tags. They can wreak havoc on the DOM nodes
-    // so let's not even put them in the DOM.
-    html = html.replace(/<script([\s\S]*?)<\/script>/g, '')
-    return html
-  },
-
-  _onlyOneTopLevel: function(containerEl) {
-    // Only a single child element
-    var childs = containerEl.children
-    if (
-      childs.length === 1 && isElement(childs[0])
-    ) {
-      return true
-    }
-    // Only one element, and all other children are whitespace
-    var foundElement = false
-    for (var i = 0, count = childs.length; i < count; i++) {
-      var child = childs[i]
-      if (isElement(child)) {
-        if (foundElement) {
-          // Encountered an element after already encountering another one
-          // Therefore, more than one element at root level
-          return false
-        } else {
-          foundElement = true
-        }
-      } else if (child.type === 'text' && !isEmpty(child.textContent)) {
-        // Contains text content
-        return false
-      }
-    }
-    return true
-  },
-
-  _getIndentedNewline: function() {
-    return '\n' + this.config.indent.repeat(this.level + 2)
-  },
-
-  _visit: function(node) {
-    this._beginVisit(node) ; this._traverse(node) ; this._endVisit(node)
-  },
-
-  _traverse: function(node) {
-    this.level++
-    if(node.children) 
-      for (var child of node.children) 
-        this._visit(child)
-    this.level--
-  },
-
-  _beginVisit: function(node) {
-    if (isElement(node))
-      this._beginVisitElement(node)
-    else if(node.type === "text")
-      this._visitText(node)
-    else if(node.type === "comment")
-      this._visitComment(node)
-    else
-      console.warn('Unrecognised node type: ' + node.type)
-  },
-
-  _endVisit: function(node) {
-    if (isElement(node))
-      this._endVisitElement(node)
-  },
-
-  _beginVisitElement: function(node) {
-    var tagName = normalizeTag(node.name)
-    var attributes = []
-    for (var attr in node.attribs) attributes.push(this._getElementAttribute(node,attr,node.attribs[attr]))
-
-    this.output += '<' + tagName
-    if (attributes.length > 0) this.output += ' ' + attributes.join(' ')
-    if (node.firstChild) this.output += '>'
-  },
-
-  _endVisitElement: function(node) {
-    this.output = trimEnd(this.output, this.config.indent)
-    this.output += !node.firstChild ? ' />' : ('</' + normalizeTag(node.name) + '>')
-  },
-
-  _visitText: function(node) {
-    var text = node.data
-    // If there's a newline in the text, adjust the indent level
-    if (text.indexOf('\n') > -1) {
-      text = node.data.replace(/\n\s*/g, this._getIndentedNewline())
-    }
-    this.output += escapeSpecialChars(text)
-  },
-
-  _visitComment: function(node) {
-    // Do not render the comment
-    this.output += '{/*' + node.data.replace('*/', '* /') + '*/}'
-  },
-
-  _getElementAttribute: function(node, name, value) {
-    switch (name) {
-      case 'style':
-        return this._getStyleAttribute(value)
-      default:
-        var tagName = node.name.toLowerCase()
-        var name =
-          (ELEMENT_ATTRIBUTE_MAPPING[tagName] &&
-            ELEMENT_ATTRIBUTE_MAPPING[tagName][name]) ||
-          ATTRIBUTE_MAPPING[name] ||
-          name
-        var result = name
-
-        // Numeric values should be output as {123} not "123"
-        if (isNumeric(value)) {
-          result += '={' + value + '}'
-        } else if (value.length > 0) {
-          if (value[0] === "{") {
-            result += '=' + value
-          }else{
-            result += '="' + value.replace('"', '&quot;') + '"'
-          }
-        }
-        return result
-    }
-  },
-
-  _getStyleAttribute: function(styles) {
-    var jsxStyles = stylesObj2JSX(stylesHTML2Obj(styles))
-    return 'style={{' + jsxStyles + '}}'
-  }
-}
-
-function dom2JSX(node,config){
-  return new dom2JSXState(config).convert(node)
-}
-
-//// End of custom JSX2HTML 

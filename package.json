@@ -1,5 +1,5 @@
 {
-  "name": "enlived-jsx",
+  "name": "jsxz",
   "version": "0.0.2",
   "description": "",
   "main": "index.js",
@@ -8,11 +8,19 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/awetzel/enlived-jsx"
+    "url": "https://github.com/awetzel/jsxz"
+  },
+  "dependencies": {
+    "ast-types": "~0.6.12",
+    "css-select": "^1.0.0",
+    "htmlparser2": "^3.8.2",
+    "recast": "^0.10.1"
   },
   "keywords": [
     "jsx",
     "enlive",
+    "template",
+    "ast",
     "css",
     "react",
     "html"
@@ -20,7 +28,7 @@
   "author": "Arnaud Wetzel <arnaud.wetzel@gmail.com> (https://github.com/awetzel)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/awetzel/enlived-jsx/issues"
+    "url": "https://github.com/awetzel/jsxz/issues"
   },
-  "homepage": "https://github.com/awetzel/enlived-jsx"
+  "homepage": "https://github.com/awetzel/jsxz"
 }

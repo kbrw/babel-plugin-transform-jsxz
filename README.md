@@ -1,56 +1,40 @@
-enlived-jsx
-===========
+JSXZ
+====
 
 **NOT Production Ready Yet !!**
+**NOT Ready to use At All Yet !!**
 
-TODO : jstransform visitor specification
+Write your JSX using DOM transformations from a static HTML file at
+compilation time - in the same way that
+[enlive](https://github.com/cgrand/enlive) templates work : targeting 
+runtime evaluations with CSS selectors.
 
-Function to generate JSX components from HTML files and CSS
-selectors with an " enlive like" semantic.
-
-Add it to your compilation process to generate JSX files containing 
-your *basic* html React component.
+In your source file you can use a JSX containing special "fake"
+components : `jsxZ` `Z`
 
 ```javascript
-var JSX = require('enlived-jsx')
-JSX('index.html','ul.class1',{
-  'span.label1': 'this.props.prop1',
-  '.label2': 'this.props.prop2,
-  'span.label1': {
-    class: old=>`"${old}"+ (this.props.active ? " active":"")`,
-    onClick: 'this.props.handleClick'
-  }
-})
+<jsxZ file="mytemplate.html" sel=".cart">
+  <Z sel=".bu" className="button"/>
+  <Z sel=".price">{this.props.price}</Z>
+  <Z swap="Link" sel="a" to="cart" params={{user: this.props.userid}}>{old}</Z>
+</jsxZ>
+```
+
+Then to compile it into JSX file, add in your compilation chain :
+
+```javascript
+var newjsx = require('jsxz')(oldjsx)
 ```
 
 ## Usage
 
-TODO : API documentation 
+TODO : Documentation
 
-## Example integration : Webpack
+## Integrated Webpack Loader
 
 Typical integration is to generate JSX file in your compilation
 process, let's see an example with webpack :
 
 ```javascript
-var JSX = require('enlived-jsx')
-
-var file_path = 'components/html.jsx'
-function file_content(){ return `
-module.exports = {
-  showCart: ${JSX('index.html','.show-cart-button', {
-    '.show-cart-button-quantity': 'this.props.quantity'
-  })},
-  index: ${JSX('index.html','body', {
-    '.content': 'this.props.children'
-  })}
-}
-`}
-
-module.exports = function(config){}
-module.exports.prototype.apply = function(compiler) {
-  compiler.plugin('compilation',function(compiler){
-    require('fs').writeFileSync(file_path,file_content())
-  })
-}
+TODO
 ```
