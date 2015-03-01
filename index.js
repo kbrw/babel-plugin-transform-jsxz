@@ -39,11 +39,11 @@ function parseJSXsSpec(ast,sourceFile,callback){
       if(!selectorAttr || selectorAttr.value.type !== 'Literal')
         error("jsxZ 'sel' must be an hardcoded CSS selector",selectorAttr.value)
       
-      var swapAttr = c.openingElement.attributes.filter(function(attr){return attr.name.name == "swap"})[0]
-      var swap = swapAttr && (swapAttr.value.value == "true")
+      var tagAttr = c.openingElement.attributes.filter(function(attr){return attr.name.name == "tag"})[0]
+      var tag = tagAttr && tagAttr.value.value
 
-      var otherAttrs = c.openingElement.attributes.filter(function(attr){ return attr.name.name !== 'swap' && attr.name.name !== 'sel'})
-      return {selector: selectorAttr.value.value, swap: swap, attrs: otherAttrs, children: c.children}
+      var otherAttrs = c.openingElement.attributes.filter(function(attr){ return attr.name.name !== 'tag' && attr.name.name !== 'sel'})
+      return {selector: selectorAttr.value.value, tag: tag, attrs: otherAttrs, node: c}
     })
 
   fs.readFile(htmlPath,function(err,data){
@@ -82,7 +82,13 @@ function parseSourceAst(sourceFile,callback){
 }
 
 function domStyleToJSX(style){
-  return null
+  var styleObj = stylesHTML2Obj(style)
+  return b.xjsExpressionContainer(
+    b.objectExpression(Object.keys(styleObj).map(function(key){
+      return b.property("init",b.identifier(hyphenToCamelCase(key)),
+                               b.literal(toJSXValue(styleObj[key])))
+    }))
+  )
 }
 
 var ATTRIBUTE_MAPPING = {for: 'htmlFor',class: 'className'}
@@ -90,7 +96,7 @@ var ELEMENT_ATTRIBUTE_MAPPING = {input: {checked: 'defaultChecked',value: 'defau
 function domAttrToJSX(tag,attrName,attrValue){
   var astAttrName = (ELEMENT_ATTRIBUTE_MAPPING[tag] && ELEMENT_ATTRIBUTE_MAPPING[tag][attrName])
                     || ATTRIBUTE_MAPPING[attrName] || attrName
-  if (tag === 'style'){
+  if (astAttrName === 'style'){
     var astAttrValue = domStyleToJSX(attrValue)
   }else if(isNumeric(attrValue)){
     var astAttrValue = b.xjsExpressioncontainer(
@@ -131,16 +137,97 @@ function searchTransfosByTagIndex(jsxZ,dom){
       console.warn("Transfo "+transfo.selector+" does not match anything")
       return []
     }
-    matchingNodes.map(function(dom){
-      map[dom.tagIndex] = JSON.parse(JSON.stringify(transfo))
+    matchingNodes.map(function(dom,i){
+      map[dom.tagIndex] = {i: i,transfo: JSON.parse(JSON.stringify(transfo))}
     })
   })
   return map
 }
 
-function applyTransfo(path,transfo){
-  if(transfo.swap) path.get().replace(transfo.children)
-  else path.get("children").replace(transfo.children)
+function attributesMap(attrs,nameFun,valueFun){
+  map = {}
+  attrs.forEach(function(attr){
+    map[nameFun && nameFun(attr.name.name) || attr.name.name] = 
+      valueFun && valueFun(attr.value) || attr.value
+  })
+  return map
+}
+
+function removeOverwrittenAttrs(attrsPath,newAttrs){
+  var newAttrsSet = attributesMap(newAttrs,function(name){return name},function(_){return true})
+  attrsPath.value.forEach(function(attr,i){
+    if(newAttrsSet[attr.name.name]) attrsPath.get(i).replace()
+  })
+}
+
+function genSwapMap(attrs,nodeIndex){
+  var swapMap = attributesMap(attrs,function(name){return name+'Z'},function(value){return value})
+  swapMap["indexZ"] = b.literal(nodeIndex)
+  return swapMap
+}
+
+function alterAttributes(path,transfo,swapMap){
+  var attrsPath = path.get("openingElement","attributes")
+  removeOverwrittenAttrs(attrsPath,transfo.attrs)
+  types.visit(transfo.attrs,{
+    visitIdentifier: function(path){
+      if(swapMap[path.node.name])
+        path.get().replace(swapMap[path.node.name])
+      return false // identifier is
+    }
+  })
+  attrsPath.push.apply(attrsPath,transfo.attrs)
+}
+
+function alterTag(path,transfo,swapMap){
+  if(transfo.tag){
+    path.get("openingElement","name").replace(b.xjsIdentifier(transfo.tag))
+    if(path.node.closingElement)
+      path.get("closingElement","name").replace(b.xjsIdentifier(transfo.tag))
+  }
+}
+
+function alterChildren(path,transfo,swapMap){
+  types.visit(transfo.node,{
+    visitIdentifier: function(path){
+      if(swapMap[path.node.name])
+        path.get().replace(swapMap[path.node.name])
+      return false // identifier is
+    },
+    visitXJSElement: function(elemPath){
+      this.traverse(elemPath)
+      var childrenZIndexes = []
+      var nbInsertion = 0
+      elemPath.node.children.forEach(function(n,i){
+        if(n.type == "XJSElement" && n.openingElement.name.name == "ChildrenZ"){
+          var insertionOffset = nbInsertion*(path.node.children.length - 1)
+          childrenZIndexes.push(i + insertionOffset)
+          nbInsertion++
+        }
+      })
+      childrenZIndexes.forEach(function(i){
+        var children = JSON.parse(JSON.stringify(path.node.children))
+        elemPath.node.children.splice.apply(elemPath.node.children,[i,1].concat(children))
+      })
+    }
+  })
+  path.get("children").replace(transfo.node.children)
+}
+
+function domAstZTransfo(domAst,jsxZ,dom){
+  var transfosByTagIndex = searchTransfosByTagIndex(jsxZ,dom)
+  types.visit(domAst,{
+    visitXJSElement: function(subpath){
+      this.traverse(subpath)
+      if (transfoIndexed=transfosByTagIndex[subpath.node.tagIndex]){
+        var transfo = transfoIndexed.transfo,
+            swapMap = genSwapMap(subpath.node.openingElement.attributes,transfoIndexed.i)
+        alterAttributes(subpath,transfo,swapMap)
+        alterTag(subpath,transfo,swapMap)
+        alterChildren(subpath,transfo,swapMap)
+      }
+    }
+  })
 }
 
 module.exports = function (sourceFile,callback){
@@ -153,14 +240,7 @@ module.exports = function (sourceFile,callback){
       parseJSXsSpec(path.node,sourceFile,function(jsxZ){
         parseDom(jsxZ,function(dom){
           var domAst = domToAst(dom)
-          var transfosByTagIndex = searchTransfosByTagIndex(jsxZ,dom)
-          types.visit(domAst,{
-            visitXJSElement: function(subpath){
-              this.traverse(subpath)
-              if (transfo=transfosByTagIndex[subpath.node.tagIndex])
-                applyTransfo(subpath,transfo)
-            }
-          })
+          domAstZTransfo(domAst,jsxZ,dom)
           path.get().replace(domAst)
           done()
         })
@@ -179,11 +259,11 @@ function hyphenToCamelCase(string) {
 }
 function toJSXValue(value) {
   if (isNumeric(value)) {
-    return value
+    return parseInt(value, 10)
   } else if (isConvertiblePixelValue(value)) {
-    return trimEnd(value, 'px')
+    return parseInt(trimEnd(value, 'px'), 10)
   } else {
-    return '\'' + value.replace(/'/g, '"') + '\''
+    return value
   }
 }
 function isEmpty(string) {
@@ -214,18 +294,8 @@ function stylesHTML2Obj(rawStyle){
     var firstColon = style.indexOf(':')
     var key = style.substr(0, firstColon)
     var value = style.substr(firstColon + 1).trim()
-    if (key !== '') {
+    if (key !== '') 
       styles[key] = value
-    }
   })
   return styles
-}
-
-function stylesObj2JSX(styles){
-  var output = []
-  for (var key in styles) {
-    if (!styles.hasOwnProperty(key)) continue
-    output.push(hyphenToCamelCase(key) + ': ' + toJSXValue(styles[key]))
-  }
-  return output.join(', ')
 }
