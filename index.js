@@ -260,12 +260,12 @@ module.exports = function (source,optionsOrCallback,callback){
           next()
         })
       }else{
-        callback(null,recast.prettyPrint(sourceAst,options.parserOptions),Object.keys(htmlDependencies))
+        callback(null,recast.print(sourceAst,options.parserOptions),Object.keys(htmlDependencies))
       }
     };next()
   }catch(e){
     if(e.name !== "JSXZ Exception") throw e
-    callback("JSXZ Error: "+e.message+" at "+e.lineNumber+":"+e.columnNumber,recast.prettyPrint(sourceAst,options.parserOptions),Object.keys(htmlDependencies))
+    callback("JSXZ Error: "+e.message+" at "+e.lineNumber+":"+e.columnNumber,recast.print(sourceAst,options.parserOptions),Object.keys(htmlDependencies))
   }
 }
 
