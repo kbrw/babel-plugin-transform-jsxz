@@ -6,7 +6,7 @@ var htmlParser = require("htmlparser2"),
     n = types.namedTypes,
     b = types.builders
 
-function parseJSXsSpec(ast,sourceFile,callback){
+function parseJSXsSpec(ast,sourceFile,templatesDir,callback){
   function error(msg,sourceAst){
     var err = new Error()
     err.message = msg
@@ -50,6 +50,12 @@ function parseJSXsSpec(ast,sourceFile,callback){
   var otherAttrs = ast.openingElement.attributes.filter(function(attr){ return attr.name.name !== 'tag' && attr.name.name !== 'sel' && attr.name.name !== "in"})
   transfos.push({tag: tag, attrs: otherAttrs})
 
+  if (htmlPath.indexOf(".html", htmlPath.length - 5) === -1){
+    htmlPath = htmlPath + ".html"
+  }
+  if (templatesDir && htmlPath[0] !== "/"){
+    htmlPath = templatesDir + "/" + htmlPath
+  }
   fs.readFile(htmlPath,function(err,data){
     if(err) error("Impossible to read html file "+htmlPath,htmlPathAttr.value)
     callback({htmlFile: data.toString(), htmlPath: htmlPath, rootSelector:  rootSelector, transfos: transfos})
@@ -238,11 +244,13 @@ function domAstZTransfo(domAst,jsxZ,dom){
   })
 }
 
-module.exports = function (sourceFile,callback){
+module.exports = function (sourceFile,arg1,arg2){
+  templatesDir = arg2 && arg1
+  callback = arg2 || arg1
   parseSourceAst(sourceFile,function(sourceAst,jsxZPaths){
     var next = function(){
       if(path = jsxZPaths.shift()){
-        parseJSXsSpec(path.node,sourceFile,function(jsxZ){
+        parseJSXsSpec(path.node,sourceFile,templatesDir,function(jsxZ){
           parseDom(jsxZ,function(dom){
             var domAst = domToAst(dom)
             domAstZTransfo(domAst,jsxZ,dom)
@@ -251,7 +259,7 @@ module.exports = function (sourceFile,callback){
           })
         })
       }else{
-        callback(recast.prettyPrint(sourceAst).code)
+        callback(recast.prettyPrint(sourceAst))
       }
     };next()
   })
