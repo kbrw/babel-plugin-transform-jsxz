@@ -1,7 +1,7 @@
 {
   "name": "jsxz",
-  "version": "0.1.0",
-  "description": "",
+  "version": "0.1.2",
+  "description": "Precompile your JSX HTML components from static HTML templates using CSS selectors transformations (in the same way that enlive templates work).",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -23,7 +23,8 @@
     "ast",
     "css",
     "react",
-    "html"
+    "html",
+    "recast"
   ],
   "author": "Arnaud Wetzel <arnaud.wetzel@gmail.com> (https://github.com/awetzel)",
   "license": "MIT",
