@@ -8,57 +8,93 @@ Example usage :
 
 ```javascript
 module.exports = {
-  menuItem: <jsxZ file="index" sel="ul.menu li">
-    <Z sel="price">{this.props.price}</Z>
-    <Z sel="a" tag="Link">
-  </jsxZ>,
-  showCart: <jsxZ file="index" sel=".cart button">
-    <Z sel="price">{this.props.price}</Z>,
-    <Z sel="a" tag="Link" to="cart"><ChildrenZ/></Z>
-  </jsxZ>
+
+  showCartButton: React.createClass({
+    render: function() {
+      <JSXZ in="index" sel=".cart button">
+        <Z sel="price">{this.props.price} €</Z>,
+        <Z sel="a" tag="Link" to="cart"><ChildrenZ/></Z>
+      </JSXZ>
+    }
+  }
+
+  menuItem: React.createClass({
+    render: function() {
+      var cx = React.addons.classSet;
+      return <JSXZ in="index" sel="nav li"
+               className={classNameZ + " " + cx({
+                 'active': this.props.active,
+                 'mainmenu': this.props.mainmenu
+                })}/>
+    }
+  })
 }
 
-var other = function(){
-  return (
-    <jsxZ file="test.html" sel="body">
-      <Z sel=".l2" className={classNameZ + ' aaa'}>{{toto: 4}}</Z>
-      <Z tag="Link" sel=".l11" to="merde">
-        {"coucou "+2}
-        <div>
-          <ChildrenZ/>
-          <div className="toto1"><ChildrenZ/></div>
-          <div className="toto2" parentClass={{classNameZ}}></div>
-          <div className="toto3"></div>
-          <ChildrenZ/>
-          <div className="toto4"></div>
-        </div>
-        <ChildrenZ/>
-      </Z>
-    </jsxZ>
-  )
-}
-<jsxZ file="mytemplate.html" sel=".cart">
-  <Z sel=".bu" className="button"/>
-  <Z sel=".price">{this.props.price}</Z>
-  <Z tag="Link" sel="a" to="cart" params={{user: this.props.userid}}><Origin/></Link>
-</jsxZ>
 ```
 
 Then to compile it into JSX file, add in your compilation chain :
 
 ```javascript
-var newjsx = require('jsxz')(oldjsx)
+// templateDir is an optional parameter containing the root path template directory
+var newjsx = require('jsxz')(sourceFile,templateDir,function(result){
+  result.code //JSX transformed code
+  result.map //source map as json
+})
 ```
+
+Use for instance [the webpack jsxz loader](https://github.com/awetzel/jsxz-loader).
+Or build your own usage with you compilation tool.
 
 ## Usage
 
-TODO : Documentation
+The `<JSXZ>` fake react component API is the following : 
 
-## Integrated Webpack Loader
+- `in` attribute is mandatory, it is the original HTML file (".html" extension is optional),
+  you can use full or relative path. Relative path can be relative to
+  a parameter given as the second parameter of the `jsxz` transformation call.
+- `sel` attribute is optional, default select the entire document.
+  This attribute is a CSS selector to choose the input HTML block to
+  convert to a JSX component. Only the first matching element will be
+  selected.
+- All other attributes are added to the output component, if the
+  attribute already exists it will be overwritten (except if the
+  attribute content is `{undefined}` the it will be deleted). 
+- special *variables* named `attributeNameZ` will be available 
+  in attribute expressions. For instance you can add a class with :
+  `className={classNameZ+" newclass"}`
+- `<JSXZ>` children must be **only** `<Z>` components.
 
-Typical integration is to generate JSX file in your compilation
-process, let's see an example with webpack :
+These `Z` components describe how to merge your JS/JSX code into your
+  HTML converted component :
+
+- `sel` attribute is mandatory, it is a CSS selector to select 
+  the Components to modify. A warning will be emmited if 
+- `tag` attribute is optional, it can be used to change the component
+  name.
+- all other attributes are added to the output component using the same
+  rules described above.
+- `<Z>` children can be any valid JSX, they will replace
+  the children of the selected HTML component
+- special *variables* named `attributeNameZ` will be available in
+  attribute and children expressions. For instance you can add a
+  class with : `className={classNameZ+" newclass"}`
+- a special *variable* named `indexZ` will contain the current index
+  of the replaced element (because the CSS selector can match several
+  elements).
+- a special component `<ChildrenZ/>` will be accepted in `<Z>` children and
+  will be replaced with the original children.
+
+Example usage :
+Construct Menu Links, replace all `<a>` with a component `<Link>`
+targetting a page according to the matching index :
 
 ```javascript
-TODO
+var  Menu = React.createClass({
+  render: function() {
+    var menu = ["home","contact","about"]
+    return <JSXZ in="index" sel="nav">
+      <Z "nav a" tag="Link" to={menu[indexZ]}><ChildrenZ/></Z>
+    </JSXZ>
+  }
+})
 ```
