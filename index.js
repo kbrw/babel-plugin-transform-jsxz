@@ -18,11 +18,11 @@ function parseJSXsSpec(ast,sourceFile,callback){
     throw err
   }
   var opentag = ast.openingElement
-  var htmlPathAttr = opentag.attributes.filter(function(attr){return attr.name.name == "file"})[0]
+  var htmlPathAttr = opentag.attributes.filter(function(attr){return attr.name.name == "in"})[0]
   if(!htmlPathAttr)
-    error("jsxZ attribute 'file' necessary",path.node)
+    error("jsxZ attribute 'in' necessary",path.node)
   if(htmlPathAttr.value.type !== 'Literal')
-    error("jsxZ 'file' must be an hardcoded string",htmlPathAttr.value)
+    error("jsxZ 'in' must be an hardcoded string",htmlPathAttr.value)
   var htmlPath = htmlPathAttr.value.value
 
   var selectorAttr = opentag.attributes.filter(function(attr){return attr.name.name == "sel"})[0]
