@@ -12,7 +12,7 @@ function error(msg,sourceAst){
   err.message = msg
   err.name = "JSXZ Exception"
   err.lineNumber = sourceAst.loc.start.line
-  err.columnNumber = sourceAst.loc.start.column
+  err.columnNumber = sourceAst.loc.start.column + 1
   throw err
 }
 
@@ -20,7 +20,7 @@ function parseJSXsSpec(ast,options,callback){
   var opentag = ast.openingElement
   var htmlPathAttr = opentag.attributes.filter(function(attr){return attr.name.name == "in"})[0]
   if(!htmlPathAttr)
-    error("jsxZ attribute 'in' necessary",path.node)
+    error("jsxZ attribute 'in' necessary",ast.openingElement)
   if(htmlPathAttr.value.type !== 'Literal')
     error("jsxZ 'in' must be an hardcoded string",htmlPathAttr.value)
   var htmlPath = htmlPathAttr.value.value
@@ -37,13 +37,13 @@ function parseJSXsSpec(ast,options,callback){
         error("Only accepted childs for jsxZ are 'Z'",c.openingElement)
       var selectorAttr = c.openingElement.attributes.filter(function(attr){return attr.name.name == "sel"})[0]
       if(!selectorAttr || selectorAttr.value.type !== 'Literal')
-        error("jsxZ 'sel' must be an hardcoded CSS selector",selectorAttr.value)
+        error("Z 'sel' attribute is mandatory and must be a hardcoded CSS selector",selectorAttr && selectorAttr.value || c.openingElement)
       
       var tagAttr = c.openingElement.attributes.filter(function(attr){return attr.name.name == "tag"})[0]
       var tag = tagAttr && tagAttr.value.value
 
       var otherAttrs = c.openingElement.attributes.filter(function(attr){ return attr.name.name !== 'tag' && attr.name.name !== 'sel'})
-      return {selector: selectorAttr.value.value, tag: tag, attrs: otherAttrs, node: c}
+      return {selector: selectorAttr.value.value, tag: tag, attrs: otherAttrs, node: c,selNode: selectorAttr.value}
     })
   var tagAttr = ast.openingElement.attributes.filter(function(attr){return attr.name.name == "tag"})[0]
   var tag = tagAttr && tagAttr.value.value
@@ -56,19 +56,21 @@ function parseJSXsSpec(ast,options,callback){
   if (options.templatesDir && htmlPath[0] !== "/"){
     htmlPath = options.templatesDir + "/" + htmlPath
   }
-  fs.readFile(htmlPath,function(err,data){
-    if(err) error("Impossible to read html file "+htmlPath,htmlPathAttr.value)
-    callback({htmlFile: data.toString(), htmlPath: htmlPath, rootSelector:  rootSelector, transfos: transfos, node: ast})
-  })
+  try{
+    var data = fs.readFileSync(htmlPath)
+  }catch(e){
+    error("Impossible to read html file "+htmlPath,htmlPathAttr.value)
+  }
+  return {htmlFile: data.toString(), htmlPath: htmlPath, rootSelector:  rootSelector, transfos: transfos, node: ast, selNode: selectorAttr.value}
 }
 
 function parseDom(jsxZ,callback){
   var parser = new htmlParser.Parser(
-    new htmlParser.DomHandler(function (error, dom) {
-      if (error) error("Too much malformed HTML "+jsxZ.htmlPath,jsxZ.node)
+    new htmlParser.DomHandler(function (err, dom) {
+      if (err) err("Too much malformed HTML "+jsxZ.htmlPath,jsxZ.node)
       if (jsxZ.rootSelector){
-        dom = cssSelector.selectOne(jsxZ.rootSelector,dom)
-        if (!dom) error("selector "+jsxZ.rootSelector+" does not match any node in "+ jsxZ.htmlPath,jsxZ.node)
+        var dom = cssSelector.selectOne(jsxZ.rootSelector,dom)
+        if (!dom) error("selector "+jsxZ.rootSelector+" does not match any node in "+ jsxZ.htmlPath,jsxZ.selNode)
       }
       callback(dom)
     }))
@@ -140,7 +142,7 @@ function searchTransfosByTagIndex(jsxZ,rootdom){
   jsxZ.transfos.map(function(transfo){
     var matchingNodes = transfo.selector && cssSelector(transfo.selector,rootdom) || [rootdom]
     if (matchingNodes.length == 0){
-      error("Transfo "+transfo.selector+" does not match anything",transfo.node)
+      throw error("Transfo "+transfo.selector+" does not match anything in "+jsxZ.htmlPath,transfo.selNode)
       return []
     }
     matchingNodes.map(function(subdom,i){
@@ -245,10 +247,11 @@ module.exports = function (source,optionsOrCallback,callback){
   callback = callback || optionsOrCallback
   htmlDependencies = {}
   var sourceAst = recast.parse(source,options.parserOptions)
-  var jsxZPaths = extractJsxzPaths(sourceAst)
-  var next = function(){
-    if(jsxzPath = jsxZPaths.shift()){
-      parseJSXsSpec(jsxzPath.node,options,function(jsxZ){
+  try{
+    var jsxZPaths = extractJsxzPaths(sourceAst)
+    var next = function(){
+      if(jsxzPath = jsxZPaths.shift()){
+        jsxZ = parseJSXsSpec(jsxzPath.node,options)
         parseDom(jsxZ,function(dom){
           var domAst = domToAst(dom)
           domAstZTransfo(domAst,jsxZ,dom)
@@ -256,11 +259,14 @@ module.exports = function (source,optionsOrCallback,callback){
           htmlDependencies[path.resolve(jsxZ.htmlPath)] = true
           next()
         })
-      })
-    }else{
-      callback(recast.prettyPrint(sourceAst,options.parserOptions),Object.keys(htmlDependencies))
-    }
-  };next()
+      }else{
+        callback(null,recast.prettyPrint(sourceAst,options.parserOptions),Object.keys(htmlDependencies))
+      }
+    };next()
+  }catch(e){
+    if(e.name !== "JSXZ Exception") throw e
+    callback("JSXZ Error: "+e.message+" at "+e.lineNumber+":"+e.columnNumber,recast.prettyPrint(sourceAst,options.parserOptions),Object.keys(htmlDependencies))
+  }
 }
 
 function trimEnd(haystack, needle) {

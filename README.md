@@ -35,22 +35,14 @@ module.exports = {
 Then to compile it into JSX file, add in your compilation chain :
 
 ```javascript
-try{
-  // options is an optional parameter : see options.js for possible values
-  var newjsx = require('jsxz')(source,options,function(result,dependencies){
-    result.code //JSX transformed code
-    result.map //source map as json object
-    dependencies //array of html file fullpath dependencies
-    // Error thrown
-  })
-}catch(e){
-  if(e.name == "JSXZ Exception"){
-    console.log(e.msg +" on line "+e.lineNumber+ "and column "+e.columnNumber)
-  }
-  else{
-    throw e
-  }
-}
+// options is an optional parameter : see options.js for possible values and default
+var newjsx = require('jsxz')(source,options,function(err,result,dependencies){
+  if(err) handleError(err) //Error during source transformation
+  result.code //JSX transformed code
+  result.map //source map as json object
+  dependencies //array of html file fullpath dependencies
+  // Error thrown
+})
 ```
 
 Use for instance [the webpack jsxz loader](https://github.com/awetzel/jsxz-loader).
