@@ -45,6 +45,10 @@ function parseJSXsSpec(ast,sourceFile,callback){
       var otherAttrs = c.openingElement.attributes.filter(function(attr){ return attr.name.name !== 'tag' && attr.name.name !== 'sel'})
       return {selector: selectorAttr.value.value, tag: tag, attrs: otherAttrs, node: c}
     })
+  var tagAttr = ast.openingElement.attributes.filter(function(attr){return attr.name.name == "tag"})[0]
+  var tag = tagAttr && tagAttr.value.value
+  var otherAttrs = ast.openingElement.attributes.filter(function(attr){ return attr.name.name !== 'tag' && attr.name.name !== 'sel' && attr.name.name !== "in"})
+  transfos.push({tag: tag, attrs: otherAttrs})
 
   fs.readFile(htmlPath,function(err,data){
     if(err) error("Impossible to read html file "+htmlPath,htmlPathAttr.value)
@@ -129,16 +133,16 @@ function domToAst(dom){
   }
 }
 
-function searchTransfosByTagIndex(jsxZ,dom){
+function searchTransfosByTagIndex(jsxZ,rootdom){
   var map = {}
   jsxZ.transfos.map(function(transfo){
-    var matchingNodes = cssSelector(transfo.selector,dom)
+    var matchingNodes = transfo.selector && cssSelector(transfo.selector,rootdom) || [rootdom]
     if (matchingNodes.length == 0){
       console.warn("Transfo "+transfo.selector+" does not match anything")
       return []
     }
-    matchingNodes.map(function(dom,i){
-      map[dom.tagIndex] = {i: i,transfo: JSON.parse(JSON.stringify(transfo))}
+    matchingNodes.map(function(subdom,i){
+      map[subdom.tagIndex] = {i: i,transfo: JSON.parse(JSON.stringify(transfo))}
     })
   })
   return map
@@ -190,30 +194,32 @@ function alterTag(path,transfo,swapMap){
 }
 
 function alterChildren(path,transfo,swapMap){
-  types.visit(transfo.node,{
-    visitIdentifier: function(path){
-      if(swapMap[path.node.name])
-        path.get().replace(swapMap[path.node.name])
-      return false // identifier is
-    },
-    visitXJSElement: function(elemPath){
-      this.traverse(elemPath)
-      var childrenZIndexes = []
-      var nbInsertion = 0
-      elemPath.node.children.forEach(function(n,i){
-        if(n.type == "XJSElement" && n.openingElement.name.name == "ChildrenZ"){
-          var insertionOffset = nbInsertion*(path.node.children.length - 1)
-          childrenZIndexes.push(i + insertionOffset)
-          nbInsertion++
-        }
-      })
-      childrenZIndexes.forEach(function(i){
-        var children = JSON.parse(JSON.stringify(path.node.children))
-        elemPath.node.children.splice.apply(elemPath.node.children,[i,1].concat(children))
-      })
-    }
-  })
-  path.get("children").replace(transfo.node.children)
+  if(transfo.node){ // no children alteration if no "node" transfo attribute
+    types.visit(transfo.node,{
+      visitIdentifier: function(path){
+        if(swapMap[path.node.name])
+          path.get().replace(swapMap[path.node.name])
+        return false // identifier is
+      },
+      visitXJSElement: function(elemPath){
+        this.traverse(elemPath)
+        var childrenZIndexes = []
+        var nbInsertion = 0
+        elemPath.node.children.forEach(function(n,i){
+          if(n.type == "XJSElement" && n.openingElement.name.name == "ChildrenZ"){
+            var insertionOffset = nbInsertion*(path.node.children.length - 1)
+            childrenZIndexes.push(i + insertionOffset)
+            nbInsertion++
+          }
+        })
+        childrenZIndexes.forEach(function(i){
+          var children = JSON.parse(JSON.stringify(path.node.children))
+          elemPath.node.children.splice.apply(elemPath.node.children,[i,1].concat(children))
+        })
+      }
+    })
+    path.get("children").replace(transfo.node.children)
+  }
 }
 
 function domAstZTransfo(domAst,jsxZ,dom){
