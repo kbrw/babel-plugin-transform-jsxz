@@ -35,11 +35,22 @@ module.exports = {
 Then to compile it into JSX file, add in your compilation chain :
 
 ```javascript
-// templateDir is an optional parameter containing the root path template directory
-var newjsx = require('jsxz')(sourceFile,templateDir,function(result){
-  result.code //JSX transformed code
-  result.map //source map as json
-})
+try{
+  // options is an optional parameter : see options.js for possible values
+  var newjsx = require('jsxz')(source,options,function(result,dependencies){
+    result.code //JSX transformed code
+    result.map //source map as json object
+    dependencies //array of html file fullpath dependencies
+    // Error thrown
+  })
+}catch(e){
+  if(e.name == "JSXZ Exception"){
+    console.log(e.msg +" on line "+e.lineNumber+ "and column "+e.columnNumber)
+  }
+  else{
+    throw e
+  }
+}
 ```
 
 Use for instance [the webpack jsxz loader](https://github.com/awetzel/jsxz-loader).
@@ -50,8 +61,7 @@ Or build your own usage with you compilation tool.
 The `<JSXZ>` fake react component API is the following : 
 
 - `in` attribute is mandatory, it is the original HTML file (".html" extension is optional),
-  you can use full or relative path. Relative path can be relative to
-  a parameter given as the second parameter of the `jsxz` transformation call.
+  you can use full or relative path. Relative path can be relative to the `templatesDir` option if given.
 - `sel` attribute is optional, default select the entire document.
   This attribute is a CSS selector to choose the input HTML block to
   convert to a JSX component. Only the first matching element will be
@@ -98,3 +108,7 @@ var  Menu = React.createClass({
   }
 })
 ```
+
+## Configuration
+
+See `options.js` to see the allowed configuration as second option of `require('jsxz')`

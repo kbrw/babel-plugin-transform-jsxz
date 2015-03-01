@@ -1,22 +1,22 @@
 var htmlParser = require("htmlparser2"), 
     cssSelector = require("css-select"),
     fs = require("fs"),
+    path = require("path"),
     recast = require("recast"),
     types = require("ast-types"),
     n = types.namedTypes,
     b = types.builders
 
-function parseJSXsSpec(ast,sourceFile,templatesDir,callback){
-  function error(msg,sourceAst){
-    var err = new Error()
-    err.message = msg
-    err.name = "JSXZ Exception"
-    err.fileName = sourceFile
-    err.lineNumber = sourceAst.loc.start.line
-    err.columnNumber = sourceAst.loc.start.column
-    err.stack = err.name+": "+msg+"\n    at "+sourceAst.type+" ("+sourceFile+":"+err.lineNumber+":"+err.columnNumber+")\n"
-    throw err
-  }
+function error(msg,sourceAst){
+  var err = new Error()
+  err.message = msg
+  err.name = "JSXZ Exception"
+  err.lineNumber = sourceAst.loc.start.line
+  err.columnNumber = sourceAst.loc.start.column
+  throw err
+}
+
+function parseJSXsSpec(ast,options,callback){
   var opentag = ast.openingElement
   var htmlPathAttr = opentag.attributes.filter(function(attr){return attr.name.name == "in"})[0]
   if(!htmlPathAttr)
@@ -53,22 +53,22 @@ function parseJSXsSpec(ast,sourceFile,templatesDir,callback){
   if (htmlPath.indexOf(".html", htmlPath.length - 5) === -1){
     htmlPath = htmlPath + ".html"
   }
-  if (templatesDir && htmlPath[0] !== "/"){
-    htmlPath = templatesDir + "/" + htmlPath
+  if (options.templatesDir && htmlPath[0] !== "/"){
+    htmlPath = options.templatesDir + "/" + htmlPath
   }
   fs.readFile(htmlPath,function(err,data){
     if(err) error("Impossible to read html file "+htmlPath,htmlPathAttr.value)
-    callback({htmlFile: data.toString(), htmlPath: htmlPath, rootSelector:  rootSelector, transfos: transfos})
+    callback({htmlFile: data.toString(), htmlPath: htmlPath, rootSelector:  rootSelector, transfos: transfos, node: ast})
   })
 }
 
 function parseDom(jsxZ,callback){
   var parser = new htmlParser.Parser(
     new htmlParser.DomHandler(function (error, dom) {
-      if (error) throw new Error("Too much malformed HTML "+jsxZ.htmlPath)
+      if (error) error("Too much malformed HTML "+jsxZ.htmlPath,jsxZ.node)
       if (jsxZ.rootSelector){
         dom = cssSelector.selectOne(jsxZ.rootSelector,dom)
-        if (!dom) throw new Error("selector "+jsxZ.rootSelector+" does not match any node in "+ jsxZ.htmlPath)
+        if (!dom) error("selector "+jsxZ.rootSelector+" does not match any node in "+ jsxZ.htmlPath,jsxZ.node)
       }
       callback(dom)
     }))
@@ -76,19 +76,15 @@ function parseDom(jsxZ,callback){
   parser.done()
 }
 
-function parseSourceAst(sourceFile,callback){
-  fs.readFile(sourceFile,function(err,data){
-    if (err) throw new Error("impossible to find source file "+sourceFile)
-    var sourceAst = recast.parse(data.toString())
-    var jsxZPaths = []
-    types.visit(sourceAst.program.body,{
-      visitXJSElement: function(path){
-        this.traverse(path)
-        if(path.node.openingElement.name.name === "JSXZ") jsxZPaths.push(path)
-      }
-    })
-    callback(sourceAst,jsxZPaths)
+function extractJsxzPaths(sourceAst,callback){
+  var jsxZPaths = []
+  types.visit(sourceAst.program.body,{
+    visitXJSElement: function(path){
+      this.traverse(path)
+      if(path.node.openingElement.name.name === "JSXZ") jsxZPaths.push(path)
+    }
   })
+  return jsxZPaths
 }
 
 function domStyleToJSX(style){
@@ -144,7 +140,7 @@ function searchTransfosByTagIndex(jsxZ,rootdom){
   jsxZ.transfos.map(function(transfo){
     var matchingNodes = transfo.selector && cssSelector(transfo.selector,rootdom) || [rootdom]
     if (matchingNodes.length == 0){
-      console.warn("Transfo "+transfo.selector+" does not match anything")
+      error("Transfo "+transfo.selector+" does not match anything",transfo.node)
       return []
     }
     matchingNodes.map(function(subdom,i){
@@ -244,25 +240,27 @@ function domAstZTransfo(domAst,jsxZ,dom){
   })
 }
 
-module.exports = function (sourceFile,arg1,arg2){
-  templatesDir = arg2 && arg1
-  callback = arg2 || arg1
-  parseSourceAst(sourceFile,function(sourceAst,jsxZPaths){
-    var next = function(){
-      if(path = jsxZPaths.shift()){
-        parseJSXsSpec(path.node,sourceFile,templatesDir,function(jsxZ){
-          parseDom(jsxZ,function(dom){
-            var domAst = domToAst(dom)
-            domAstZTransfo(domAst,jsxZ,dom)
-            path.get().replace(domAst)
-            next()
-          })
+module.exports = function (source,optionsOrCallback,callback){
+  options = require('./options')(callback && optionsOrCallback || {})
+  callback = callback || optionsOrCallback
+  htmlDependencies = {}
+  var sourceAst = recast.parse(source,options.parserOptions)
+  var jsxZPaths = extractJsxzPaths(sourceAst)
+  var next = function(){
+    if(jsxzPath = jsxZPaths.shift()){
+      parseJSXsSpec(jsxzPath.node,options,function(jsxZ){
+        parseDom(jsxZ,function(dom){
+          var domAst = domToAst(dom)
+          domAstZTransfo(domAst,jsxZ,dom)
+          jsxzPath.get().replace(domAst)
+          htmlDependencies[path.resolve(jsxZ.htmlPath)] = true
+          next()
         })
-      }else{
-        callback(recast.prettyPrint(sourceAst))
-      }
-    };next()
-  })
+      })
+    }else{
+      callback(recast.prettyPrint(sourceAst,options.parserOptions),Object.keys(htmlDependencies))
+    }
+  };next()
 }
 
 function trimEnd(haystack, needle) {
