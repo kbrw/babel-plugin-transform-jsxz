@@ -10,7 +10,7 @@ function parseJSXsSpec(ast,sourceFile,callback){
   function error(msg,sourceAst){
     var err = new Error()
     err.message = msg
-    err.name = "JSXs Exception"
+    err.name = "JSXZ Exception"
     err.fileName = sourceFile
     err.lineNumber = sourceAst.loc.start.line
     err.columnNumber = sourceAst.loc.start.column
@@ -74,7 +74,7 @@ function parseSourceAst(sourceFile,callback){
     types.visit(sourceAst.program.body,{
       visitXJSElement: function(path){
         this.traverse(path)
-        if(path.node.openingElement.name.name === "jsxZ") jsxZPaths.push(path)
+        if(path.node.openingElement.name.name === "JSXZ") jsxZPaths.push(path)
       }
     })
     callback(sourceAst,jsxZPaths)
@@ -176,7 +176,9 @@ function alterAttributes(path,transfo,swapMap){
       return false // identifier is
     }
   })
-  attrsPath.push.apply(attrsPath,transfo.attrs)
+  attrsPath.push.apply(attrsPath,transfo.attrs.filter(function(attr){
+    return !(attr.value.type == "XJSExpressionContainer" && attr.value.expression.type == "Identifier" && attr.value.expression.name == "undefined")
+  }))
 }
 
 function alterTag(path,transfo,swapMap){
@@ -232,20 +234,20 @@ function domAstZTransfo(domAst,jsxZ,dom){
 
 module.exports = function (sourceFile,callback){
   parseSourceAst(sourceFile,function(sourceAst,jsxZPaths){
-    var remaining = jsxZPaths.length
-    function done(){ remaining--; if(remaining === 0)
-      callback(recast.prettyPrint(sourceAst).code)
-    }
-    jsxZPaths.map(function(path){
-      parseJSXsSpec(path.node,sourceFile,function(jsxZ){
-        parseDom(jsxZ,function(dom){
-          var domAst = domToAst(dom)
-          domAstZTransfo(domAst,jsxZ,dom)
-          path.get().replace(domAst)
-          done()
+    var next = function(){
+      if(path = jsxZPaths.shift()){
+        parseJSXsSpec(path.node,sourceFile,function(jsxZ){
+          parseDom(jsxZ,function(dom){
+            var domAst = domToAst(dom)
+            domAstZTransfo(domAst,jsxZ,dom)
+            path.get().replace(domAst)
+            next()
+          })
         })
-      })
-    })
+      }else{
+        callback(recast.prettyPrint(sourceAst).code)
+      }
+    };next()
   })
 }
 
