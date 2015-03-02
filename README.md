@@ -7,6 +7,7 @@ selectors transformations (in the same way that [enlive](https://github.com/cgra
 Example usage :
 
 ```javascript
+var cn = require('classnames)
 module.exports = {
 
   showCartButton: React.createClass({
@@ -20,9 +21,8 @@ module.exports = {
 
   menuItem: React.createClass({
     render: function() {
-      var cx = React.addons.classSet;
       return <JSXZ in="index" sel="nav li"
-               className={classNameZ + " " + cx({
+               className={cn(classNameZ,{
                  'active': this.props.active,
                  'mainmenu': this.props.mainmenu
                 })}/>
