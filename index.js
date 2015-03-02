@@ -3,6 +3,7 @@ var htmlParser = require("htmlparser2"),
     fs = require("fs"),
     path = require("path"),
     recast = require("recast"),
+    deepcopy = require("deepcopy"),
     types = require("ast-types"),
     n = types.namedTypes,
     b = types.builders
@@ -78,12 +79,22 @@ function parseDom(jsxZ,callback){
   parser.done()
 }
 
+function syncForEach(leftOrRight,list,then,end){
+  var next = function(){
+    if(elem = (leftOrRight == "left" ? list.shift() : list.pop())){
+      then(elem,next)
+    }else{
+      end()
+    }
+  };next()
+}
+
 function extractJsxzPaths(sourceAst,callback){
   var jsxZPaths = []
   types.visit(sourceAst.program.body,{
     visitXJSElement: function(path){
-      this.traverse(path)
       if(path.node.openingElement.name.name === "JSXZ") jsxZPaths.push(path)
+      this.traverse(path)
     }
   })
   return jsxZPaths
@@ -115,9 +126,7 @@ function domAttrToJSX(tag,attrName,attrValue){
   return b.xjsAttribute(b.xjsIdentifier(astAttrName),astAttrValue)
 }
 
-var tagIndex = 0
-function domToAst(dom){
-  tagIndex++
+function domToAst(dom,tagIndex){
   if (dom.type==='tag'){
     var astTag = dom.name.toLowerCase()
     var astAttribs = Object.keys(dom.attribs).map(function(attrName){
@@ -128,13 +137,17 @@ function domToAst(dom){
       b.xjsClosingElement(b.xjsIdentifier(astTag)),
         dom.children.filter(
           function(child){return child.type === 'text' || child.type === 'tag'}
-        ).map(domToAst))
-    ast.tagIndex = tagIndex.toString() // associate tag ast node to dom to map selector to ast transfos
-    dom.tagIndex = tagIndex.toString() // use string index to use object as hash map
-    return ast
+        ).map(function(child){
+          var ast = domToAst(child,tagIndex)
+          tagIndex=ast.tagIndex
+          return ast
+        }))
   }else if(dom.type==='text'){
-    return b.literal(dom.data)
+    var ast = b.literal(dom.data)
   }
+  ast.tagIndex = tagIndex + 1 // associate tag ast node to dom to map selector to ast transfos
+  dom.tagIndex = ast.tagIndex // use string index to use object as hash map
+  return ast
 }
 
 function searchTransfosByTagIndex(jsxZ,rootdom){
@@ -146,7 +159,7 @@ function searchTransfosByTagIndex(jsxZ,rootdom){
       return []
     }
     matchingNodes.map(function(subdom,i){
-      map[subdom.tagIndex] = {i: i,transfo: JSON.parse(JSON.stringify(transfo))}
+      map[subdom.tagIndex] = {i: i,transfo: deepcopy(transfo)}
     })
   })
   return map
@@ -217,7 +230,7 @@ function alterChildren(path,transfo,swapMap){
           }
         })
         childrenZIndexes.forEach(function(i){
-          var children = JSON.parse(JSON.stringify(path.node.children))
+          var children = deepcopy(path.node.children)
           elemPath.node.children.splice.apply(elemPath.node.children,[i,1].concat(children))
         })
       }
@@ -247,22 +260,21 @@ module.exports = function (source,optionsOrCallback,callback){
   callback = callback || optionsOrCallback
   htmlDependencies = {}
   var sourceAst = recast.parse(source,options.parserOptions)
+  var currentTagIndex = 0
   try{
-    var jsxZPaths = extractJsxzPaths(sourceAst)
-    var next = function(){
-      if(jsxzPath = jsxZPaths.shift()){
-        jsxZ = parseJSXsSpec(jsxzPath.node,options)
-        parseDom(jsxZ,function(dom){
-          var domAst = domToAst(dom)
-          domAstZTransfo(domAst,jsxZ,dom)
-          jsxzPath.get().replace(domAst)
-          htmlDependencies[path.resolve(jsxZ.htmlPath)] = true
-          next()
-        })
-      }else{
-        callback(null,recast.print(sourceAst,options.parserOptions),Object.keys(htmlDependencies))
-      }
-    };next()
+    syncForEach("right",extractJsxzPaths(sourceAst),function(jsxzPath,next){
+      jsxZ = parseJSXsSpec(jsxzPath.node,options)
+      parseDom(jsxZ,function(dom){
+        var domAst = domToAst(dom,currentTagIndex)
+        currentTagIndex = domAst.tagIndex
+        domAstZTransfo(domAst,jsxZ,dom)
+        jsxzPath.get().replace(domAst)
+        htmlDependencies[path.resolve(jsxZ.htmlPath)] = true
+        next()
+      })
+    },function(){
+      callback(null,recast.print(sourceAst,options.parserOptions),Object.keys(htmlDependencies))
+    })
   }catch(e){
     if(e.name !== "JSXZ Exception") throw e
     callback("JSXZ Error: "+e.message+" at "+e.lineNumber+":"+e.columnNumber,recast.print(sourceAst,options.parserOptions),Object.keys(htmlDependencies))

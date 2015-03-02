@@ -1,6 +1,6 @@
 {
   "name": "jsxz",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Precompile your JSX HTML components from static HTML templates using CSS selectors transformations (in the same way that enlive templates work).",
   "main": "index.js",
   "scripts": {
@@ -14,6 +14,7 @@
     "ast-types": "~0.6.12",
     "css-select": "^1.0.0",
     "htmlparser2": "^3.8.2",
+    "deepcopy": "~0.4.0",
     "recast": "^0.10.1"
   },
   "keywords": [
