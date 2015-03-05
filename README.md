@@ -7,7 +7,7 @@ selectors transformations (in the same way that [enlive](https://github.com/cgra
 Example usage :
 
 ```javascript
-var cn = require('classnames)
+var cn = require('classnames')
 module.exports = {
 
   showCartButton: React.createClass({
