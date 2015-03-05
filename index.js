@@ -118,7 +118,7 @@ function domAttrToJSX(tag,attrName,attrValue){
   if (astAttrName === 'style'){
     var astAttrValue = domStyleToJSX(attrValue)
   }else if(isNumeric(attrValue)){
-    var astAttrValue = b.xjsExpressioncontainer(
+    var astAttrValue = b.xjsExpressionContainer(
                          b.literal(parseInt(attrValue, 10)))
   }else{
     var astAttrValue = b.literal(attrValue)
