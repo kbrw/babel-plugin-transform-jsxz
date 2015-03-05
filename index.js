@@ -32,7 +32,7 @@ function parseJSXsSpec(ast,options,callback){
   var rootSelector = selectorAttr && selectorAttr.value.value
 
   transfos = ast.children
-    .filter(function(c){return c.type==='XJSElement'})
+    .filter(function(c){return c.type==='JSXElement'})
     .map(function(c){
       if(c.openingElement.name.name !== "Z")
         error("Only accepted childs for jsxZ are 'Z'",c.openingElement)
@@ -92,7 +92,7 @@ function syncForEach(leftOrRight,list,then,end){
 function extractJsxzPaths(sourceAst,callback){
   var jsxZPaths = []
   types.visit(sourceAst.program.body,{
-    visitXJSElement: function(path){
+    visitJSXElement: function(path){
       if(path.node.openingElement.name.name === "JSXZ") jsxZPaths.push(path)
       this.traverse(path)
     }
@@ -102,7 +102,7 @@ function extractJsxzPaths(sourceAst,callback){
 
 function domStyleToJSX(style){
   var styleObj = stylesHTML2Obj(style)
-  return b.xjsExpressionContainer(
+  return b.jsxExpressionContainer(
     b.objectExpression(Object.keys(styleObj).map(function(key){
       return b.property("init",b.identifier(hyphenToCamelCase(key)),
                                b.literal(toJSXValue(styleObj[key])))
@@ -118,12 +118,12 @@ function domAttrToJSX(tag,attrName,attrValue){
   if (astAttrName === 'style'){
     var astAttrValue = domStyleToJSX(attrValue)
   }else if(isNumeric(attrValue)){
-    var astAttrValue = b.xjsExpressionContainer(
+    var astAttrValue = b.jsxExpressionContainer(
                          b.literal(parseInt(attrValue, 10)))
   }else{
     var astAttrValue = b.literal(attrValue)
   }
-  return b.xjsAttribute(b.xjsIdentifier(astAttrName),astAttrValue)
+  return b.jsxAttribute(b.jsxIdentifier(astAttrName),astAttrValue)
 }
 
 function domToAst(dom,tagIndex){
@@ -132,9 +132,9 @@ function domToAst(dom,tagIndex){
     var astAttribs = Object.keys(dom.attribs).map(function(attrName){
       return domAttrToJSX(astTag,attrName,dom.attribs[attrName])
     })
-    var ast = b.xjsElement(
-      b.xjsOpeningElement(b.xjsIdentifier(astTag),astAttribs),
-      b.xjsClosingElement(b.xjsIdentifier(astTag)),
+    var ast = b.jsxElement(
+      b.jsxOpeningElement(b.jsxIdentifier(astTag),astAttribs),
+      b.jsxClosingElement(b.jsxIdentifier(astTag)),
         dom.children.filter(
           function(child){return child.type === 'text' || child.type === 'tag'}
         ).map(function(child){
@@ -198,15 +198,15 @@ function alterAttributes(path,transfo,swapMap){
     }
   })
   attrsPath.push.apply(attrsPath,transfo.attrs.filter(function(attr){
-    return !(attr.value.type == "XJSExpressionContainer" && attr.value.expression.type == "Identifier" && attr.value.expression.name == "undefined")
+    return !(attr.value.type == "JSXExpressionContainer" && attr.value.expression.type == "Identifier" && attr.value.expression.name == "undefined")
   }))
 }
 
 function alterTag(path,transfo,swapMap){
   if(transfo.tag){
-    path.get("openingElement","name").replace(b.xjsIdentifier(transfo.tag))
+    path.get("openingElement","name").replace(b.jsxIdentifier(transfo.tag))
     if(path.node.closingElement)
-      path.get("closingElement","name").replace(b.xjsIdentifier(transfo.tag))
+      path.get("closingElement","name").replace(b.jsxIdentifier(transfo.tag))
   }
 }
 
@@ -218,12 +218,12 @@ function alterChildren(path,transfo,swapMap){
           path.get().replace(swapMap[path.node.name])
         return false // identifier is
       },
-      visitXJSElement: function(elemPath){
+      visitJSXElement: function(elemPath){
         this.traverse(elemPath)
         var childrenZIndexes = []
         var nbInsertion = 0
         elemPath.node.children.forEach(function(n,i){
-          if(n.type == "XJSElement" && n.openingElement.name.name == "ChildrenZ"){
+          if(n.type == "JSXElement" && n.openingElement.name.name == "ChildrenZ"){
             var insertionOffset = nbInsertion*(path.node.children.length - 1)
             childrenZIndexes.push(i + insertionOffset)
             nbInsertion++
@@ -242,7 +242,7 @@ function alterChildren(path,transfo,swapMap){
 function domAstZTransfo(domAst,jsxZ,dom){
   var transfosByTagIndex = searchTransfosByTagIndex(jsxZ,dom)
   types.visit(domAst,{
-    visitXJSElement: function(subpath){
+    visitJSXElement: function(subpath){
       this.traverse(subpath)
       if (transfoIndexed=transfosByTagIndex[subpath.node.tagIndex]){
         var transfo = transfoIndexed.transfo,
