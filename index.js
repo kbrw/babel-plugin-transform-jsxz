@@ -219,20 +219,25 @@ function alterChildren(path,transfo,swapMap){
         return false // identifier is
       },
       visitJSXElement: function(elemPath){
-        this.traverse(elemPath)
-        var childrenZIndexes = []
-        var nbInsertion = 0
-        elemPath.node.children.forEach(function(n,i){
-          if(n.type == "JSXElement" && n.openingElement.name.name == "ChildrenZ"){
-            var insertionOffset = nbInsertion*(path.node.children.length - 1)
-            childrenZIndexes.push(i + insertionOffset)
-            nbInsertion++
-          }
-        })
-        childrenZIndexes.forEach(function(i){
+        if(elemPath.node.openingElement.name.name == "ChildrenZ"){
           var children = deepcopy(path.node.children)
-          elemPath.node.children.splice.apply(elemPath.node.children,[i,1].concat(children))
-        })
+          elemPath.get().replace(b.arrayExpression(children))
+        }else{
+          var childrenZIndexes = []
+          var nbInsertion = 0
+          elemPath.node.children.forEach(function(n,i){
+            if(n.type == "JSXElement" && n.openingElement.name.name == "ChildrenZ"){
+              var insertionOffset = nbInsertion*(path.node.children.length - 1)
+              childrenZIndexes.push(i + insertionOffset)
+              nbInsertion++
+            }
+          })
+          childrenZIndexes.forEach(function(i){
+            var children = deepcopy(path.node.children)
+            elemPath.node.children.splice.apply(elemPath.node.children,[i,1].concat(children))
+          })
+        }
+        this.traverse(elemPath)
       }
     })
     path.get("children").replace(transfo.node.children)
