@@ -1,4 +1,4 @@
-var htmlParser = require("htmlparser2"), 
+var htmlParser = require("htmlparser2"),
     cssSelector = require("css-select"),
     fs = require("fs"),
     path = require("path"),
@@ -39,7 +39,7 @@ function parseJSXsSpec(ast,options,callback){
       var selectorAttr = c.openingElement.attributes.filter(function(attr){return attr.name.name == "sel"})[0]
       if(!selectorAttr || selectorAttr.value.type !== 'Literal')
         error("Z 'sel' attribute is mandatory and must be a hardcoded CSS selector",selectorAttr && selectorAttr.value || c.openingElement)
-      
+
       var tagAttr = c.openingElement.attributes.filter(function(attr){return attr.name.name == "tag"})[0]
       var tag = tagAttr && tagAttr.value.value
 
@@ -168,7 +168,7 @@ function searchTransfosByTagIndex(jsxZ,rootdom){
 function attributesMap(attrs,nameFun,valueFun){
   map = {}
   attrs.forEach(function(attr){
-    map[nameFun && nameFun(attr.name.name) || attr.name.name] = 
+    map[nameFun && nameFun(attr.name.name) || attr.name.name] =
       valueFun && valueFun(attr.value) || attr.value
   })
   return map
@@ -287,7 +287,7 @@ module.exports = function (source,optionsOrCallback,callback){
 }
 
 function trimEnd(haystack, needle) {
-  return haystack.endsWith(needle) ? haystack.slice(0, -needle.length) : haystack
+  return (haystack.indexOf(needle,haystack.length-needle.length) !== -1) ? haystack.slice(0, -needle.length) : haystack
 }
 function hyphenToCamelCase(string) {
   return string.replace(/-(.)/g, function(match, chr) {
@@ -331,7 +331,7 @@ function stylesHTML2Obj(rawStyle){
     var firstColon = style.indexOf(':')
     var key = style.substr(0, firstColon)
     var value = style.substr(firstColon + 1).trim()
-    if (key !== '') 
+    if (key !== '')
       styles[key] = value
   })
   return styles
