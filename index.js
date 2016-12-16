@@ -134,7 +134,7 @@ function domToAst(dom,tagIndex){
     var astAttribs = Object.keys(dom.attribs).map(function(attrName){
       return domAttrToJSX(astTag,attrName,dom.attribs[attrName])
     })
-    var ast = t.JSXElement(
+    var ast = t.jSXElement(
       t.jSXOpeningElement(t.jSXIdentifier(astTag),astAttribs),
       t.jSXClosingElement(t.jSXIdentifier(astTag)),
         dom.children.filter(
@@ -190,21 +190,22 @@ function genSwapMap(attrs,nodeIndex){
 }
 
 function alterAttributes(path,transfo,swapMap){
-  //console.log(path)
-  console.log("alter attributes "+ path + " " + path.node.name + " " + (path && (path.node.name ? path.node.name.name : path.node.openingElement.name.name)))
-  var attrsPath = path.get("openingElement.attributes")
+  var attrsPath = path.get("attributes")
   removeOverwrittenAttrs(attrsPath,transfo.attrs)
-  //console.log(attrsPath.map(function(a){return a.node && [a.node.name.name,a.node.value.value]}))
-  traverse(transfo.attrs,{
+  var fakeAst = t.blockStatement([t.ExpressionStatement(
+    t.jSXElement(t.jSXOpeningElement(t.jSXIdentifier("fake"),transfo.attrs),null,[],true)
+  )])
+  traverse(fakeAst,{
     Identifier(path){
       if(swapMap[path.node.name])
         path.replaceWith(swapMap[path.node.name])
-      return false // identifier is
     }
   },path.scope,path)
-  attrsPath.push.apply(attrsPath,transfo.attrs.filter(function(attr){
+  attrsPath,transfo.attrs.filter(function(attr){
     return !(attr.value.type == "JSXExpressionContainer" && attr.value.expression.type == "Identifier" && attr.value.expression.name == "undefined")
-  }))
+  }).map(function(attr){
+    path.pushContainer("attributes",attr)
+  })
 }
 
 function alterTag(path,transfo,swapMap){
@@ -217,18 +218,44 @@ function alterTag(path,transfo,swapMap){
 
 function alterChildren(path,transfo,swapMap){
   if(transfo.node){ // no children alteration if no "node" transfo attribute
-    traverse(transfo.node,{
+    var fakeRoot = t.blockStatement([t.ExpressionStatement(transfo.node)])
+    traverse(fakeRoot,{
       Identifier(path) {
         if(swapMap[path.node.name])
           path.replaceWith(swapMap[path.node.name])
-        return false // identifier is
       },
       JSXElement(elemPath) {
         if(elemPath.node.openingElement.name.name == "ChildrenZ"){
           var children = deepcopy(path.node.children)
-          elemPath.replaceWithMultiple(children)
+          //console.log(elemPath.node)
+          //console.log(elemPath.parentPath.node)
+          //console.log(elemPath.getSibling(0).node)
+          if(elemPath.parentPath.node.type ==='JSXElement'){
+            var prev_children = deepcopy(elemPath.parentPath.node.children)
+            elemPath.parentPath.get('children').map(function(child){ child.remove() })
+            console.log(elemPath)
+            console.log("must replace key "+elemPath.key)
+            prev_children.map(function(prev_child){
+              if(prev_child.type =='JSXElement' && prev_child.openingElement.name.name == "ChildrenZ"){ 
+                children.map(function(new_child){
+                  elemPath.parentPath.pushContainer('children',new_child)
+                })
+              }else{
+                elemPath.parentPath.pushContainer('children',prev_child)
+              }
+            })
+          }else{
+            elemPath.replaceWithMultiple(children)
+          }
+          //  children.map(function(child){
+          //    console.log("insert : ")
+          //    console.log(elemPath.parentPath.node)
+          //    console.log(child)
+          //    elemPath.insertBefore(child)
+          //  })
+          //  elemPath.remove()
+          //}
         }
-        //elemPath.traverse(this)
       }
     },path.scope,path)
     path.node.children = transfo.node.children
@@ -237,13 +264,14 @@ function alterChildren(path,transfo,swapMap){
 
 function domAstZTransfo(domAst,jsxzPath,jsxZ,dom){
   var transfosByTagIndex = searchTransfosByTagIndex(jsxZ,dom)
-  traverse(domAst,{
+  var fakeRoot = t.blockStatement([t.ExpressionStatement(domAst)])
+  traverse(fakeRoot,{
     JSXElement: {
-      enter(subpath) {
+      exit(subpath) {
         if (transfoIndexed=transfosByTagIndex[subpath.node.tagIndex]){
+          //console.log("enter "+jsxZ.htmlPath + " / "+jsxZ.rootSelector+" : "+subpath.get("openingElement").node.name.name)
           var transfo = transfoIndexed.transfo,
               swapMap = genSwapMap(subpath.node.openingElement.attributes,transfoIndexed.i)
-          //console.log(subpath.node.openingElement.name.name)
           //console.log(transfo)
           alterAttributes(subpath.get("openingElement"),transfo,swapMap)
           alterTag(subpath,transfo,swapMap)
