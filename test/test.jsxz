@@ -1,7 +1,7 @@
 var other = function(){
   return (
     <JSXZ in="test" sel="body" toto={totoZ + "titi"} tag="mybody">
-      <Z sel=".l3" style={undefined}>me</Z>
+      <Z sel=".l3" style={undefined} tag="aaaa" tt={ttZ + "cc"}>me</Z>
       <Z sel=".l11" to="merde">
         hello you
         <JSXZ in="test" sel=".l3"/>

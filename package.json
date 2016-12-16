@@ -11,11 +11,15 @@
     "url": "https://github.com/awetzel/jsxz"
   },
   "dependencies": {
-    "css-select": "^1.0.0",
-    "htmlparser2": "^3.8.2",
-    "deepcopy": "~0.4.0",
-    "ast-types": "~0.7.0",
-    "recast": "0.10.16"
+    "ast-types": "~0.9.0",
+    "babel-generator": "^6.20.0",
+    "babel-traverse": "^6.20.0",
+    "babel-types": "^6.20.0",
+    "babylon": "^6.14.1",
+    "css-select": "~1.2.0",
+    "deepcopy": "~0.6.0",
+    "htmlparser2": "~3.9.0",
+    "recast": "~0.11.0"
   },
   "keywords": [
     "jsx",

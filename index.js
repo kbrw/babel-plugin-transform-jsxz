@@ -1,9 +1,13 @@
 var htmlParser = require("htmlparser2"),
     cssSelector = require("css-select"),
     fs = require("fs"),
+    deepcopy = require("deepcopy"),
+    bab = require("babylon"),
+    traverse = require('babel-traverse').default,
+    generate = require('babel-generator').default,
+    t = require("babel-types"),
     path = require("path"),
     recast = require("recast"),
-    deepcopy = require("deepcopy"),
     types = require("ast-types"),
     n = types.namedTypes,
     b = types.builders
@@ -22,12 +26,12 @@ function parseJSXsSpec(ast,options,callback){
   var htmlPathAttr = opentag.attributes.filter(function(attr){return attr.name.name == "in"})[0]
   if(!htmlPathAttr)
     error("jsxZ attribute 'in' necessary",ast.openingElement)
-  if(htmlPathAttr.value.type !== 'Literal')
+  if(htmlPathAttr.value.type !== 'StringLiteral')
     error("jsxZ 'in' must be an hardcoded string",htmlPathAttr.value)
   var htmlPath = htmlPathAttr.value.value
 
   var selectorAttr = opentag.attributes.filter(function(attr){return attr.name.name == "sel"})[0]
-  if(selectorAttr && selectorAttr.value.type !== 'Literal')
+  if(selectorAttr && selectorAttr.value.type !== 'StringLiteral')
     error("jsxZ 'sel' must be an hardcoded CSS selector",selectorAttr.value)
   var rootSelector = selectorAttr && selectorAttr.value.value
 
@@ -37,7 +41,7 @@ function parseJSXsSpec(ast,options,callback){
       if(c.openingElement.name.name !== "Z")
         error("Only accepted childs for jsxZ are 'Z'",c.openingElement)
       var selectorAttr = c.openingElement.attributes.filter(function(attr){return attr.name.name == "sel"})[0]
-      if(!selectorAttr || selectorAttr.value.type !== 'Literal')
+      if(!selectorAttr || selectorAttr.value.type !== 'StringLiteral')
         error("Z 'sel' attribute is mandatory and must be a hardcoded CSS selector",selectorAttr && selectorAttr.value || c.openingElement)
 
       var tagAttr = c.openingElement.attributes.filter(function(attr){return attr.name.name == "tag"})[0]
@@ -89,12 +93,11 @@ function syncForEach(leftOrRight,list,then,end){
   };next()
 }
 
-function extractJsxzPaths(sourceAst,callback){
+function extractJsxzPaths(sourceAst){
   var jsxZPaths = []
-  types.visit(sourceAst.program.body,{
-    visitJSXElement: function(path){
+  traverse(sourceAst,{
+    JSXElement(path){
       if(path.node.openingElement.name.name === "JSXZ") jsxZPaths.push(path)
-      this.traverse(path)
     }
   })
   return jsxZPaths
@@ -102,10 +105,9 @@ function extractJsxzPaths(sourceAst,callback){
 
 function domStyleToJSX(style){
   var styleObj = stylesHTML2Obj(style)
-  return b.jsxExpressionContainer(
-    b.objectExpression(Object.keys(styleObj).map(function(key){
-      return b.property("init",b.identifier(hyphenToCamelCase(key)),
-                               b.literal(toJSXValue(styleObj[key])))
+  return t.jSXExpressionContainer(
+    t.objectExpression(Object.keys(styleObj).map(function(key){
+      return t.objectProperty(t.identifier(hyphenToCamelCase(key)),toJSXValue(styleObj[key]))
     }))
   )
 }
@@ -118,12 +120,12 @@ function domAttrToJSX(tag,attrName,attrValue){
   if (astAttrName === 'style'){
     var astAttrValue = domStyleToJSX(attrValue)
   }else if(isNumeric(attrValue)){
-    var astAttrValue = b.jsxExpressionContainer(
-                         b.literal(parseInt(attrValue, 10)))
+    var astAttrValue = t.jSXExpressionContainer(
+                         t.stringLiteral(parseInt(attrValue, 10)))
   }else{
-    var astAttrValue = b.literal(attrValue)
+    var astAttrValue = t.stringLiteral(attrValue)
   }
-  return b.jsxAttribute(b.jsxIdentifier(astAttrName),astAttrValue)
+  return t.jSXAttribute(t.jSXIdentifier(astAttrName),astAttrValue)
 }
 
 function domToAst(dom,tagIndex){
@@ -132,9 +134,9 @@ function domToAst(dom,tagIndex){
     var astAttribs = Object.keys(dom.attribs).map(function(attrName){
       return domAttrToJSX(astTag,attrName,dom.attribs[attrName])
     })
-    var ast = b.jsxElement(
-      b.jsxOpeningElement(b.jsxIdentifier(astTag),astAttribs),
-      b.jsxClosingElement(b.jsxIdentifier(astTag)),
+    var ast = t.JSXElement(
+      t.jSXOpeningElement(t.jSXIdentifier(astTag),astAttribs),
+      t.jSXClosingElement(t.jSXIdentifier(astTag)),
         dom.children.filter(
           function(child){return child.type === 'text' || child.type === 'tag'}
         ).map(function(child){
@@ -143,7 +145,7 @@ function domToAst(dom,tagIndex){
           return ast
         }))
   }else if(dom.type==='text'){
-    var ast = b.literal(dom.data)
+    var ast = t.jSXText(dom.data)
   }
   ast.tagIndex = tagIndex + 1 // associate tag ast node to dom to map selector to ast transfos
   dom.tagIndex = ast.tagIndex // use string index to use object as hash map
@@ -176,27 +178,30 @@ function attributesMap(attrs,nameFun,valueFun){
 
 function removeOverwrittenAttrs(attrsPath,newAttrs){
   var newAttrsSet = attributesMap(newAttrs,function(name){return name},function(_){return true})
-  attrsPath.value.forEach(function(attr,i){
-    if(newAttrsSet[attr.name.name]) attrsPath.get(i).replace()
+  attrsPath.forEach(function(attr){
+    if(newAttrsSet[attr.node.name.name]) attr.remove()
   })
 }
 
 function genSwapMap(attrs,nodeIndex){
   var swapMap = attributesMap(attrs,function(name){return name+'Z'},function(value){return value})
-  swapMap["indexZ"] = b.literal(nodeIndex)
+  swapMap["indexZ"] = t.numericLiteral(nodeIndex)
   return swapMap
 }
 
 function alterAttributes(path,transfo,swapMap){
-  var attrsPath = path.get("openingElement","attributes")
+  //console.log(path)
+  console.log("alter attributes "+ path + " " + path.node.name + " " + (path && (path.node.name ? path.node.name.name : path.node.openingElement.name.name)))
+  var attrsPath = path.get("openingElement.attributes")
   removeOverwrittenAttrs(attrsPath,transfo.attrs)
-  types.visit(transfo.attrs,{
-    visitIdentifier: function(path){
+  //console.log(attrsPath.map(function(a){return a.node && [a.node.name.name,a.node.value.value]}))
+  traverse(transfo.attrs,{
+    Identifier(path){
       if(swapMap[path.node.name])
-        path.get().replace(swapMap[path.node.name])
+        path.replaceWith(swapMap[path.node.name])
       return false // identifier is
     }
-  })
+  },path.scope,path)
   attrsPath.push.apply(attrsPath,transfo.attrs.filter(function(attr){
     return !(attr.value.type == "JSXExpressionContainer" && attr.value.expression.type == "Identifier" && attr.value.expression.name == "undefined")
   }))
@@ -204,81 +209,73 @@ function alterAttributes(path,transfo,swapMap){
 
 function alterTag(path,transfo,swapMap){
   if(transfo.tag){
-    path.get("openingElement","name").replace(b.jsxIdentifier(transfo.tag))
+    path.get("openingElement.name").replaceWith(t.jSXIdentifier(transfo.tag))
     if(path.node.closingElement)
-      path.get("closingElement","name").replace(b.jsxIdentifier(transfo.tag))
+      path.get("closingElement.name").replaceWith(t.jSXIdentifier(transfo.tag))
   }
 }
 
 function alterChildren(path,transfo,swapMap){
   if(transfo.node){ // no children alteration if no "node" transfo attribute
-    types.visit(transfo.node,{
-      visitIdentifier: function(path){
+    traverse(transfo.node,{
+      Identifier(path) {
         if(swapMap[path.node.name])
-          path.get().replace(swapMap[path.node.name])
+          path.replaceWith(swapMap[path.node.name])
         return false // identifier is
       },
-      visitJSXElement: function(elemPath){
+      JSXElement(elemPath) {
         if(elemPath.node.openingElement.name.name == "ChildrenZ"){
           var children = deepcopy(path.node.children)
-          elemPath.get().replace(b.arrayExpression(children))
-        }else{
-          var childrenZIndexes = []
-          var nbInsertion = 0
-          elemPath.node.children.forEach(function(n,i){
-            if(n.type == "JSXElement" && n.openingElement.name.name == "ChildrenZ"){
-              var insertionOffset = nbInsertion*(path.node.children.length - 1)
-              childrenZIndexes.push(i + insertionOffset)
-              nbInsertion++
-            }
-          })
-          childrenZIndexes.forEach(function(i){
-            var children = deepcopy(path.node.children)
-            elemPath.node.children.splice.apply(elemPath.node.children,[i,1].concat(children))
-          })
+          elemPath.replaceWithMultiple(children)
         }
-        this.traverse(elemPath)
+        //elemPath.traverse(this)
       }
-    })
-    path.get("children").replace(transfo.node.children)
+    },path.scope,path)
+    path.node.children = transfo.node.children
   }
 }
 
-function domAstZTransfo(domAst,jsxZ,dom){
+function domAstZTransfo(domAst,jsxzPath,jsxZ,dom){
   var transfosByTagIndex = searchTransfosByTagIndex(jsxZ,dom)
-  types.visit(domAst,{
-    visitJSXElement: function(subpath){
-      this.traverse(subpath)
-      if (transfoIndexed=transfosByTagIndex[subpath.node.tagIndex]){
-        var transfo = transfoIndexed.transfo,
-            swapMap = genSwapMap(subpath.node.openingElement.attributes,transfoIndexed.i)
-        alterAttributes(subpath,transfo,swapMap)
-        alterTag(subpath,transfo,swapMap)
-        alterChildren(subpath,transfo,swapMap)
+  traverse(domAst,{
+    JSXElement: {
+      enter(subpath) {
+        if (transfoIndexed=transfosByTagIndex[subpath.node.tagIndex]){
+          var transfo = transfoIndexed.transfo,
+              swapMap = genSwapMap(subpath.node.openingElement.attributes,transfoIndexed.i)
+          //console.log(subpath.node.openingElement.name.name)
+          //console.log(transfo)
+          alterAttributes(subpath.get("openingElement"),transfo,swapMap)
+          alterTag(subpath,transfo,swapMap)
+          alterChildren(subpath,transfo,swapMap)
+        }
       }
     }
-  })
+  },jsxzPath.scope,jsxzPath)
 }
 
 module.exports = function (source,optionsOrCallback,callback){
   options = require('./options')(callback && optionsOrCallback || {})
   callback = callback || optionsOrCallback
   htmlDependencies = {}
-  var sourceAst = recast.parse(source,options.parserOptions)
+  //var sourceAst = recast.parse(source,options.parserOptions)
+  var code = source.toString()
+  var sourceAst = bab.parse(code,{sourceType: "module", plugins: ["jsx","flow","objectRestSpread"] })
   var currentTagIndex = 0
   try{
     syncForEach("right",extractJsxzPaths(sourceAst),function(jsxzPath,next){
       jsxZ = parseJSXsSpec(jsxzPath.node,options)
+      //console.log(jsxZ)
       parseDom(jsxZ,function(dom){
         var domAst = domToAst(dom,currentTagIndex)
         currentTagIndex = domAst.tagIndex
-        domAstZTransfo(domAst,jsxZ,dom)
-        jsxzPath.get().replace(domAst)
+        domAstZTransfo(domAst,jsxzPath,jsxZ,dom)
+        jsxzPath.replaceWith(domAst)
         htmlDependencies[path.resolve(jsxZ.htmlPath)] = true
         next()
       })
     },function(){
-      callback(null,recast.print(sourceAst,options.parserOptions),Object.keys(htmlDependencies))
+      callback(null,generate(sourceAst,null,code),Object.keys(htmlDependencies))
     })
   }catch(e){
     if(e.name !== "JSXZ Exception") throw e
@@ -296,11 +293,11 @@ function hyphenToCamelCase(string) {
 }
 function toJSXValue(value) {
   if (isNumeric(value)) {
-    return parseInt(value, 10)
+    return t.numericLiteral(parseInt(value, 10))
   } else if (isConvertiblePixelValue(value)) {
-    return parseInt(trimEnd(value, 'px'), 10)
+    return t.numericLiteral(parseInt(trimEnd(value, 'px'), 10))
   } else {
-    return value
+    return t.stringLiteral(value)
   }
 }
 function isEmpty(string) {
