@@ -8,37 +8,52 @@ var htmlParser = require("htmlparser2"),
     t = require("babel-types"),
     path = require("path")
 
-function error(msg,sourceAst){
-  var err = new Error()
-  err.message = msg
-  err.name = "JSXZ Exception"
-  err.lineNumber = sourceAst.loc.start.line
-  err.columnNumber = sourceAst.loc.start.column + 1
+function error(msg,node, path){
+  var loc = node && (node.loc || node._loc)
+  var err = new Error(msg)
+  var errorVisitor = {
+    enter(path, state) {
+      var loc = path.node.loc
+      if (loc) {
+        state.loc = loc
+        path.stop()
+      }
+    }
+  }
+  if (loc) {
+    err.loc = loc.start;
+  } else if(path) {
+    traverse(node, errorVisitor, path.scope, err)
+    err.message += " (This is an error on an internal node. Probably an internal error"
+    if (err.loc) { err.message += ". Location has been estimated." }
+    err.message += ")"
+  }
   throw err
 }
 
-function parseJSXsSpec(ast,options,callback){
+function parseJSXsSpec(path,options,callback){
+  var ast = path.node
   var opentag = ast.openingElement
   var htmlPathAttr = opentag.attributes.filter(function(attr){return attr.name.name == "in"})[0]
   if(!htmlPathAttr)
-    error("jsxZ attribute 'in' necessary",ast.openingElement)
+    error("jsxZ attribute 'in' necessary",ast.openingElement,path)
   if(htmlPathAttr.value.type !== 'StringLiteral')
-    error("jsxZ 'in' must be an hardcoded string",htmlPathAttr.value)
+    error("jsxZ 'in' must be an hardcoded string",htmlPathAttr.value,path)
   var htmlPath = htmlPathAttr.value.value
 
   var selectorAttr = opentag.attributes.filter(function(attr){return attr.name.name == "sel"})[0]
   if(selectorAttr && selectorAttr.value.type !== 'StringLiteral')
-    error("jsxZ 'sel' must be an hardcoded CSS selector",selectorAttr.value)
+    error("jsxZ 'sel' must be an hardcoded CSS selector",selectorAttr.value,path)
   var rootSelector = selectorAttr && selectorAttr.value.value
 
   transfos = ast.children
     .filter(function(c){return c.type==='JSXElement'})
     .map(function(c){
       if(c.openingElement.name.name !== "Z")
-        error("Only accepted childs for jsxZ are 'Z'",c.openingElement)
+        error("Only accepted childs for jsxZ are 'Z'",c.openingElement,path)
       var selectorAttr = c.openingElement.attributes.filter(function(attr){return attr.name.name == "sel"})[0]
       if(!selectorAttr || selectorAttr.value.type !== 'StringLiteral')
-        error("Z 'sel' attribute is mandatory and must be a hardcoded CSS selector",selectorAttr && selectorAttr.value || c.openingElement)
+        error("Z 'sel' attribute is mandatory and must be a hardcoded CSS selector",selectorAttr && selectorAttr.value || c.openingElement,path)
 
       var tagAttr = c.openingElement.attributes.filter(function(attr){return attr.name.name == "tag"})[0]
       var tag = tagAttr && tagAttr.value.value
@@ -60,7 +75,7 @@ function parseJSXsSpec(ast,options,callback){
   try{
     var data = fs.readFileSync(htmlPath)
   }catch(e){
-    error("Impossible to read html file "+htmlPath,htmlPathAttr.value)
+    error("Impossible to read html file "+htmlPath,htmlPathAttr.value, path)
   }
   return {htmlFile: data.toString(), htmlPath: htmlPath, rootSelector:  rootSelector, transfos: transfos, node: ast, selNode: selectorAttr.value}
 }
@@ -153,7 +168,7 @@ function searchTransfosByTagIndex(jsxZ,rootdom){
   jsxZ.transfos.map(function(transfo){
     var matchingNodes = transfo.selector && cssSelector(transfo.selector,rootdom) || [rootdom]
     if (matchingNodes.length == 0){
-      throw error("Transfo "+transfo.selector+" does not match anything in "+jsxZ.htmlPath,transfo.selNode)
+      error("Transfo "+transfo.selector+" does not match anything in "+jsxZ.htmlPath,transfo.selNode)
       return []
     }
     matchingNodes.map(function(subdom,i){
@@ -266,31 +281,35 @@ function domAstZTransfo(domAst,jsxzPath,jsxZ,dom){
   },jsxzPath.scope,jsxzPath)
 }
 
-module.exports = function (source,optionsOrCallback,callback){
-  options = require('./options')(callback && optionsOrCallback || {})
-  callback = callback || optionsOrCallback
-  htmlDependencies = {}
-  //var sourceAst = recast.parse(source,options.parserOptions)
-  var code = source.toString()
-  var sourceAst = bab.parse(code,{sourceType: "module", plugins: ["jsx","flow","objectRestSpread"] })
-  var currentTagIndex = 0
-  try{
-    syncForEach("right",extractJsxzPaths(sourceAst),function(jsxzPath,next){
-      jsxZ = parseJSXsSpec(jsxzPath.node,options)
-      parseDom(jsxZ,function(dom){
-        var domAst = domToAst(dom,currentTagIndex)
-        currentTagIndex = domAst.tagIndex
-        domAstZTransfo(domAst,jsxzPath,jsxZ,dom)
-        jsxzPath.replaceWith(domAst)
-        htmlDependencies[path.resolve(jsxZ.htmlPath)] = true
-        next()
+module.exports.default = function() {
+  return {
+    inherits: require("babel-plugin-syntax-jsx"),
+    pre(state) { this.jsxZPaths = [] },
+    visitor: {
+      JSXElement(path,state){
+        if(path.node.openingElement.name.name === "JSXZ") 
+          this.jsxZPaths.push({path: path,jsxz: parseJSXsSpec(path,state.opts || {})})
+      }
+    },
+    post(state) {
+      var currentTagIndex = 0
+      var htmlDependencies = {}
+      syncForEach("right",this.jsxZPaths,function(e,next){
+        var jsxzPath = e.path, jsxZ = e.jsxz
+        console.log(jsxZ.htmlPath+" / "+jsxZ.rootSelector)
+        parseDom(jsxZ,function(dom){
+          var domAst = domToAst(dom,currentTagIndex)
+          currentTagIndex = domAst.tagIndex
+          domAstZTransfo(domAst,jsxzPath,jsxZ,dom)
+          jsxzPath.replaceWith(domAst)
+          htmlDependencies[path.resolve(jsxZ.htmlPath)] = true
+          next()
+        })
+      },function(){
+        //console.log("finishing generate ast")
+        //callback(null,generate(sourceAst,null,code),Object.keys(htmlDependencies))
       })
-    },function(){
-      callback(null,generate(sourceAst,null,code),Object.keys(htmlDependencies))
-    })
-  }catch(e){
-    if(e.name !== "JSXZ Exception") throw e
-    callback("JSXZ Error: "+e.message+" at "+e.lineNumber+":"+e.columnNumber,recast.print(sourceAst,options.parserOptions),Object.keys(htmlDependencies))
+    }
   }
 }
 
