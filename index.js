@@ -2,9 +2,7 @@ var htmlParser = require("htmlparser2"),
     cssSelector = require("css-select"),
     fs = require("fs"),
     deepcopy = require("deepcopy"),
-    bab = require("babylon"),
     traverse = require('babel-traverse').default,
-    generate = require('babel-generator').default,
     t = require("babel-types"),
     path = require("path")
 

@@ -1,6 +1,6 @@
 {
-  "name": "jsxz",
-  "version": "0.1.10",
+  "name": "babel-plugin-transform-jsxz",
+  "version": "1.0.0",
   "description": "Precompile your JSX HTML components from static HTML templates using CSS selectors transformations (in the same way that enlive templates work).",
   "main": "index.js",
   "scripts": {
@@ -8,18 +8,19 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/awetzel/jsxz"
+    "url": "https://github.com/awetzel/babel-plugin-transform-jsxz"
   },
   "dependencies": {
-    "ast-types": "~0.9.0",
-    "babel-generator": "^6.20.0",
     "babel-traverse": "^6.20.0",
     "babel-types": "^6.20.0",
-    "babylon": "^6.14.1",
+    "babel-plugin-syntax-jsx": "^6.18.0",
     "css-select": "~1.2.0",
     "deepcopy": "~0.6.0",
-    "htmlparser2": "~3.9.0",
-    "recast": "~0.11.0"
+    "htmlparser2": "~3.9.0"
+  },
+  "devDependencies": {
+    "babel-core": "^6.20.0",
+    "babel-plugin-transform-react-jsx": "^6.8.0"
   },
   "keywords": [
     "jsx",
@@ -29,12 +30,12 @@
     "css",
     "react",
     "html",
-    "recast"
+    "babel"
   ],
   "author": "Arnaud Wetzel <arnaud.wetzel@gmail.com> (https://github.com/awetzel)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/awetzel/jsxz/issues"
+    "url": "https://github.com/awetzel/babel-plugin-transform-jsxz/issues"
   },
-  "homepage": "https://github.com/awetzel/jsxz"
+  "homepage": "https://github.com/awetzel/babel-plugin-transform-jsxz"
 }
