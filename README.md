@@ -103,4 +103,5 @@ var  Menu = React.createClass({
 
 ## Configuration
 
-See `options.js` to see the allowed configuration as second option of `require('jsxz')`
+Then `templatesDir` plugin configuration allows you to use a different relative
+path for HTML files than the current directory.
