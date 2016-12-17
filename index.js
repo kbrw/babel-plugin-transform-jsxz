@@ -6,11 +6,7 @@ var htmlParser = require("htmlparser2"),
     traverse = require('babel-traverse').default,
     generate = require('babel-generator').default,
     t = require("babel-types"),
-    path = require("path"),
-    recast = require("recast"),
-    types = require("ast-types"),
-    n = types.namedTypes,
-    b = types.builders
+    path = require("path")
 
 function error(msg,sourceAst){
   var err = new Error()
@@ -227,14 +223,9 @@ function alterChildren(path,transfo,swapMap){
       JSXElement(elemPath) {
         if(elemPath.node.openingElement.name.name == "ChildrenZ"){
           var children = deepcopy(path.node.children)
-          //console.log(elemPath.node)
-          //console.log(elemPath.parentPath.node)
-          //console.log(elemPath.getSibling(0).node)
           if(elemPath.parentPath.node.type ==='JSXElement'){
             var prev_children = deepcopy(elemPath.parentPath.node.children)
             elemPath.parentPath.get('children').map(function(child){ child.remove() })
-            console.log(elemPath)
-            console.log("must replace key "+elemPath.key)
             prev_children.map(function(prev_child){
               if(prev_child.type =='JSXElement' && prev_child.openingElement.name.name == "ChildrenZ"){ 
                 children.map(function(new_child){
@@ -245,16 +236,11 @@ function alterChildren(path,transfo,swapMap){
               }
             })
           }else{
-            elemPath.replaceWithMultiple(children)
+            var children_without_text = children.map(function(child){
+              return (child.type == "JSXText") ?  t.stringLiteral(child.value) : child
+            })
+            elemPath.replaceWith(t.arrayExpression(children_without_text))
           }
-          //  children.map(function(child){
-          //    console.log("insert : ")
-          //    console.log(elemPath.parentPath.node)
-          //    console.log(child)
-          //    elemPath.insertBefore(child)
-          //  })
-          //  elemPath.remove()
-          //}
         }
       }
     },path.scope,path)
@@ -269,10 +255,8 @@ function domAstZTransfo(domAst,jsxzPath,jsxZ,dom){
     JSXElement: {
       exit(subpath) {
         if (transfoIndexed=transfosByTagIndex[subpath.node.tagIndex]){
-          //console.log("enter "+jsxZ.htmlPath + " / "+jsxZ.rootSelector+" : "+subpath.get("openingElement").node.name.name)
           var transfo = transfoIndexed.transfo,
               swapMap = genSwapMap(subpath.node.openingElement.attributes,transfoIndexed.i)
-          //console.log(transfo)
           alterAttributes(subpath.get("openingElement"),transfo,swapMap)
           alterTag(subpath,transfo,swapMap)
           alterChildren(subpath,transfo,swapMap)
@@ -293,7 +277,6 @@ module.exports = function (source,optionsOrCallback,callback){
   try{
     syncForEach("right",extractJsxzPaths(sourceAst),function(jsxzPath,next){
       jsxZ = parseJSXsSpec(jsxzPath.node,options)
-      //console.log(jsxZ)
       parseDom(jsxZ,function(dom){
         var domAst = domToAst(dom,currentTagIndex)
         currentTagIndex = domAst.tagIndex
