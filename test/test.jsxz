@@ -4,6 +4,16 @@ var other = function(){
       <Z sel=".l3" style={undefined} tag="aaaa" tt={ttZ + "cc"}>me</Z>
       <Z sel=".l11" to="merde">
         hello you
+        <p>first childrenz</p>
+        <ChildrenZ/>
+        <p>second childrenz</p>
+        <div><ChildrenZ/></div>
+        <p>third childrenz</p>
+        <div>{[<a></a>,<ChildrenZ/>]}</div>
+        <p>fourth childrenz</p>
+        <div>{(function(){
+          return <ChildrenZ/>
+        })()}</div>
         <JSXZ in="test" sel=".l3"/>
       </Z>
     </JSXZ>
