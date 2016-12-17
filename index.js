@@ -203,19 +203,16 @@ function genSwapMap(attrs,nodeIndex){
 function alterAttributes(path,transfo,swapMap){
   var attrsPath = path.get("attributes")
   removeOverwrittenAttrs(attrsPath,transfo.attrs)
-  var fakeAst = t.blockStatement([t.ExpressionStatement(
-    t.jSXElement(t.jSXOpeningElement(t.jSXIdentifier("fake"),transfo.attrs),null,[],true)
-  )])
-  traverse(fakeAst,{
+  transfo.attrs.filter(function(attr){
+    return !(attr.value.type == "JSXExpressionContainer" && attr.value.expression.type == "Identifier" && attr.value.expression.name == "undefined")
+  }).map(function(attr){
+    path.pushContainer("attributes",attr)
+  })
+  path.traverse({
     Identifier(path){
       if(swapMap[path.node.name])
         path.replaceWith(swapMap[path.node.name])
     }
-  },path.scope,path)
-  attrsPath,transfo.attrs.filter(function(attr){
-    return !(attr.value.type == "JSXExpressionContainer" && attr.value.expression.type == "Identifier" && attr.value.expression.name == "undefined")
-  }).map(function(attr){
-    path.pushContainer("attributes",attr)
   })
 }
 
@@ -229,37 +226,49 @@ function alterTag(path,transfo,swapMap){
 
 function alterChildren(path,transfo,swapMap){
   if(transfo.node){ // no children alteration if no "node" transfo attribute
-    var fakeRoot = t.blockStatement([t.ExpressionStatement(transfo.node)])
-    traverse(fakeRoot,{
-      Identifier(path) {
+    var childrenz = deepcopy(path.node.children)
+
+    path.get('children').map(function(childz){ childz.remove() })
+    transfo.node.children.map(function(zchild){ path.pushContainer('children',zchild) })
+
+    var do_transform_path = function(elemPath){
+      if(elemPath.node.openingElement.name.name == "ChildrenZ"){
+        var children = deepcopy(childrenz)
+        if(elemPath.parentPath.node.type ==='JSXElement'){
+          var prev_children = deepcopy(elemPath.parentPath.node.children)
+          elemPath.parentPath.get('children').map(function(child){ child.remove() })
+          prev_children.map(function(prev_child){
+            if(prev_child.type =='JSXElement' && prev_child.openingElement.name.name == "ChildrenZ"){
+              children.map(function(new_child){
+                elemPath.parentPath.pushContainer('children',new_child)
+              })
+            }else{
+              elemPath.parentPath.pushContainer('children',prev_child)
+            }
+          })
+          elemPath.parentPath.traverse({
+            Identifier: function(path) {
+              if(swapMap[path.node.name])
+                path.replaceWith(swapMap[path.node.name])
+            },
+            JSXElement: do_transform_path
+          })
+        }else{
+          var children_without_text = children.map(function(child){
+            return (child.type == "JSXText") ?  t.stringLiteral(child.value) : child
+          })
+          elemPath.replaceWith(t.arrayExpression(children_without_text))
+        }
+      }
+    }
+    do_transform_path(path)
+    path.traverse({
+      Identifier: function(path) {
         if(swapMap[path.node.name])
           path.replaceWith(swapMap[path.node.name])
       },
-      JSXElement(elemPath) {
-        if(elemPath.node.openingElement.name.name == "ChildrenZ"){
-          var children = deepcopy(path.node.children)
-          if(elemPath.parentPath.node.type ==='JSXElement'){
-            var prev_children = deepcopy(elemPath.parentPath.node.children)
-            elemPath.parentPath.get('children').map(function(child){ child.remove() })
-            prev_children.map(function(prev_child){
-              if(prev_child.type =='JSXElement' && prev_child.openingElement.name.name == "ChildrenZ"){ 
-                children.map(function(new_child){
-                  elemPath.parentPath.pushContainer('children',new_child)
-                })
-              }else{
-                elemPath.parentPath.pushContainer('children',prev_child)
-              }
-            })
-          }else{
-            var children_without_text = children.map(function(child){
-              return (child.type == "JSXText") ?  t.stringLiteral(child.value) : child
-            })
-            elemPath.replaceWith(t.arrayExpression(children_without_text))
-          }
-        }
-      }
-    },path.scope,path)
-    path.node.children = transfo.node.children
+      JSXElement: do_transform_path
+    })
   }
 }
 
@@ -283,18 +292,24 @@ module.exports.default = function() {
     inherits: require("babel-plugin-syntax-jsx"),
     pre(state) { this.currentTagIndex = 0 },
     visitor: {
-      JSXElement: {exit(path,state){
+      Program(path,state){
+        // On program start, do an explicit traversal up front for your plugin.
+        var options = state.opts
         var self = this
-        if(path.node.openingElement.name.name === "JSXZ"){
-          var jsxzPath = path, jsxZ = parseJSXsSpec(path,state.opts || {})
-          parseDom(jsxZ,function(dom){
-            var domAst = domToAst(dom,self.currentTagIndex)
-            self.currentTagIndex = domAst.tagIndex
-            jsxzPath.replaceWith(domAst)
-            domAstZTransfo(jsxzPath,jsxZ,dom)
-          })
-        }
-      }}
+        path.traverse({
+          JSXElement: {exit(path){
+            if(path.node.openingElement.name.name === "JSXZ"){
+              var jsxzPath = path, jsxZ = parseJSXsSpec(path,options || {})
+              parseDom(jsxZ,function(dom){
+                var domAst = domToAst(dom,self.currentTagIndex)
+                self.currentTagIndex = domAst.tagIndex
+                jsxzPath.replaceWith(domAst)
+                domAstZTransfo(jsxzPath,jsxZ,dom)
+              })
+            }
+          }}
+        })
+      }
     }
   }
 }
