@@ -130,7 +130,7 @@ function domAttrToJSX(tag,attrName,attrValue){
     var astAttrValue = domStyleToJSX(attrValue)
   }else if(isNumeric(attrValue)){
     var astAttrValue = t.jSXExpressionContainer(
-                         t.stringLiteral(parseInt(attrValue, 10)))
+                         t.numericLiteral(parseInt(attrValue, 10)))
   }else{
     var astAttrValue = t.stringLiteral(attrValue)
   }
