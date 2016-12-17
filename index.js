@@ -121,9 +121,55 @@ function domStyleToJSX(style){
   )
 }
 
-var ATTRIBUTE_MAPPING = {for: 'htmlFor',class: 'className'}
+var ATTRIBUTE_MAPPING = {
+  'for': 'htmlFor','class': 'className',
+  'accept-charset': 'acceptCharset',
+  'accesskey': 'accessKey',
+  'allowfullscreen': 'allowFullScreen',
+  'allowtransparency': 'allowTransparency',
+  'autocomplete': 'autoComplete',
+  'autofocus': 'autoFocus',
+  'autoplay': 'autoPlay',
+  'cellpadding': 'cellPadding',
+  'cellspacing': 'cellSpacing',
+  'charset': 'charSet',
+  'classid': 'classID',
+  'colspan': 'colSpan',
+  'contenteditable': 'contentEditable',
+  'contextmenu': 'contextMenu',
+  'crossorigin': 'crossOrigin',
+  'datetime': 'dateTime',
+  'enctype': 'encType',
+  'formaction': 'formAction',
+  'formenctype': 'formEncType',
+  'formmethod': 'formMethod',
+  'formnovalidate': 'formNoValidate',
+  'formtarget': 'formTarget',
+  'frameborder': 'frameBorder',
+  'hreflang': 'hrefLang',
+  'http-equiv': 'httpEquiv',
+  'inputmode': 'inputMode',
+  'keyparams': 'keyParams',
+  'keytype': 'keyType',
+  'marginheight': 'marginHeight',
+  'marginwidth': 'marginWidth',
+  'maxlength': 'maxLength',
+  'mediagroup': 'mediaGroup',
+  'minlength': 'minLength',
+  'novalidate': 'noValidate',
+  'radiogroup': 'radioGroup',
+  'readonly': 'readOnly',
+  'rowspan': 'rowSpan',
+  'spellcheck': 'spellCheck',
+  'srcdoc': 'srcDoc',
+  'srclang': 'srcLang',
+  'srcset': 'srcSet',
+  'tabindex': 'tabIndex',
+  'usemap': 'useMap'
+}
 var ELEMENT_ATTRIBUTE_MAPPING = {input: {checked: 'defaultChecked',value: 'defaultValue'}}
-function domAttrToJSX(tag,attrName,attrValue){
+function domAttrToJSX(tag,attrNameCase,attrValue){
+  var attrName = attrNameCase.toLowerCase()
   var astAttrName = (ELEMENT_ATTRIBUTE_MAPPING[tag] && ELEMENT_ATTRIBUTE_MAPPING[tag][attrName])
                     || ATTRIBUTE_MAPPING[attrName] || attrName
   if (astAttrName === 'style'){

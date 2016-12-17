@@ -1,6 +1,6 @@
 {
   "name": "babel-plugin-transform-jsxz",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Precompile your JSX HTML components from static HTML templates using CSS selectors transformations (in the same way that enlive templates work).",
   "main": "index.js",
   "scripts": {
