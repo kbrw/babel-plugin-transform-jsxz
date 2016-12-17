@@ -1,8 +1,9 @@
-JSXZ
-====
+Babel JSXZ transform
+====================
 
-Precompile your JSX HTML components from static HTML templates using CSS
-selectors transformations (in the same way that [enlive](https://github.com/cgrand/enlive) templates work).
+Use HTML files to construct your React components at compilation time.
+To do that, use CSS selectors transformations to "include" your JSX code inside
+your HTML (in the same way that [enlive](https://github.com/cgrand/enlive) templates work).
 
 Example usage :
 
@@ -32,20 +33,19 @@ module.exports = {
 
 ```
 
-Then to compile it into JSX file, add in your compilation chain :
+You can use this transform inside your JS babel plugin, along with the "jsx"
+transform.
 
-```javascript
-// options is an optional parameter : see options.js for possible values and default
-var newjsx = require('jsxz')(source,options,function(err,result,dependencies){
-  if(err) handleError(err) //Error during source transformation
-  result.code //JSX transformed code
-  result.map //source map as json object
-  dependencies //array of html file fullpath dependencies
-  // Error thrown
-})
+```
+{
+  plugins: [
+    ["transform-jsxz",{templatesDir: "/path/to/your/html/template/dir"}],
+    "transform-react-jsx"
+  ]
+}
 ```
 
-Use for instance [the webpack jsxz loader](https://github.com/awetzel/jsxz-loader).
+Or use a dedicated loader [the webpack jsxz loader](https://github.com/awetzel/jsxz-loader).
 Or build your own usage with you compilation tool.
 
 ## Usage
