@@ -263,52 +263,38 @@ function alterChildren(path,transfo,swapMap){
   }
 }
 
-function domAstZTransfo(domAst,jsxzPath,jsxZ,dom){
+function domAstZTransfo(jsxzPath,jsxZ,dom){
   var transfosByTagIndex = searchTransfosByTagIndex(jsxZ,dom)
-  var fakeRoot = t.blockStatement([t.ExpressionStatement(domAst)])
-  traverse(fakeRoot,{
-    JSXElement: {
-      exit(subpath) {
-        if (transfoIndexed=transfosByTagIndex[subpath.node.tagIndex]){
-          var transfo = transfoIndexed.transfo,
-              swapMap = genSwapMap(subpath.node.openingElement.attributes,transfoIndexed.i)
-          alterAttributes(subpath.get("openingElement"),transfo,swapMap)
-          alterTag(subpath,transfo,swapMap)
-          alterChildren(subpath,transfo,swapMap)
-        }
-      }
+  var do_transform_path = function(subpath){
+    if (transfoIndexed=transfosByTagIndex[subpath.node.tagIndex]){
+      var transfo = transfoIndexed.transfo,
+          swapMap = genSwapMap(subpath.node.openingElement.attributes,transfoIndexed.i)
+      alterAttributes(subpath.get("openingElement"),transfo,swapMap)
+      alterTag(subpath,transfo,swapMap)
+      alterChildren(subpath,transfo,swapMap)
     }
-  },jsxzPath.scope,jsxzPath)
+  }
+  do_transform_path(jsxzPath)
+  jsxzPath.traverse({JSXElement: { exit: do_transform_path }})
 }
 
 module.exports.default = function() {
   return {
     inherits: require("babel-plugin-syntax-jsx"),
-    pre(state) { this.jsxZPaths = [] },
+    pre(state) { this.currentTagIndex = 0 },
     visitor: {
-      JSXElement(path,state){
-        if(path.node.openingElement.name.name === "JSXZ") 
-          this.jsxZPaths.push({path: path,jsxz: parseJSXsSpec(path,state.opts || {})})
-      }
-    },
-    post(state) {
-      var currentTagIndex = 0
-      var htmlDependencies = {}
-      syncForEach("right",this.jsxZPaths,function(e,next){
-        var jsxzPath = e.path, jsxZ = e.jsxz
-        console.log(jsxZ.htmlPath+" / "+jsxZ.rootSelector)
-        parseDom(jsxZ,function(dom){
-          var domAst = domToAst(dom,currentTagIndex)
-          currentTagIndex = domAst.tagIndex
-          domAstZTransfo(domAst,jsxzPath,jsxZ,dom)
-          jsxzPath.replaceWith(domAst)
-          htmlDependencies[path.resolve(jsxZ.htmlPath)] = true
-          next()
-        })
-      },function(){
-        //console.log("finishing generate ast")
-        //callback(null,generate(sourceAst,null,code),Object.keys(htmlDependencies))
-      })
+      JSXElement: {exit(path,state){
+        var self = this
+        if(path.node.openingElement.name.name === "JSXZ"){
+          var jsxzPath = path, jsxZ = parseJSXsSpec(path,state.opts || {})
+          parseDom(jsxZ,function(dom){
+            var domAst = domToAst(dom,self.currentTagIndex)
+            self.currentTagIndex = domAst.tagIndex
+            jsxzPath.replaceWith(domAst)
+            domAstZTransfo(jsxzPath,jsxZ,dom)
+          })
+        }
+      }}
     }
   }
 }
