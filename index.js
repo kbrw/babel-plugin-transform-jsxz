@@ -8,7 +8,7 @@ var htmlParser = require("htmlparser2"),
 
 function error(msg,node, path){
   var loc = node && (node.loc || node._loc)
-  var err = new Error(msg)
+  var err = new SyntaxError(msg)
   var errorVisitor = {
     enter(path, state) {
       var loc = path.node.loc
