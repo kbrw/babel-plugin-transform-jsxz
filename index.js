@@ -216,7 +216,9 @@ function searchTransfosByTagIndex(jsxZ,rootdom){
       return []
     }
     matchingNodes.map(function(subdom,i){
-      map[subdom.tagIndex] = {i: i,transfo: deepcopy(transfo)}
+      var cloned_transfo = deepcopy(transfo)
+      cloned_transfo.attrs = cloned_transfo.attrs.map(t.cloneDeep)
+      map[subdom.tagIndex] = {i: i,transfo: cloned_transfo}
     })
   })
   return map
@@ -270,16 +272,16 @@ function alterTag(path,transfo,swapMap){
 
 function alterChildren(path,transfo,swapMap){
   if(transfo.node){ // no children alteration if no "node" transfo attribute
-    var childrenz = deepcopy(path.node.children)
+    var childrenz = path.node.children.map(t.cloneDeep)
 
     path.get('children').map(function(childz){ childz.remove() })
-    transfo.node.children.map(function(zchild){ path.pushContainer('children',zchild) })
+    transfo.node.children.map(function(zchild){ path.pushContainer('children', t.cloneDeep(zchild)) })
 
     var do_transform_path = function(elemPath){
       if(elemPath.node.openingElement.name.name == "ChildrenZ"){
-        var children = deepcopy(childrenz)
+        var children = childrenz.map(t.cloneDeep)
         if(elemPath.parentPath.node.type ==='JSXElement'){
-          var prev_children = deepcopy(elemPath.parentPath.node.children)
+          var prev_children = elemPath.parentPath.node.children.map(t.cloneDeep)
           elemPath.parentPath.get('children').map(function(child){ child.remove() })
           prev_children.map(function(prev_child){
             if(prev_child.type =='JSXElement' && prev_child.openingElement.name.name == "ChildrenZ"){

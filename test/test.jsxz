@@ -1,4 +1,6 @@
 var other = function(){
+  var styles = ["red", "blue"]
+
   return (
     <JSXZ in="test" sel="body" toto={totoZ + "titi"} tag="mybody">
       <Z sel=".l3" style={undefined} tag="aaaa" tt={ttZ + "cc"}>me</Z>
@@ -16,6 +18,7 @@ var other = function(){
         })()}</div>
         <JSXZ in="test" sel=".l3"/>
       </Z>
+      <Z sel=".l111 li" className={styles[indexZ]}><span><ChildrenZ/></span></Z>
     </JSXZ>
   )
 }
