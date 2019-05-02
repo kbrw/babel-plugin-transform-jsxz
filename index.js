@@ -165,7 +165,9 @@ var ATTRIBUTE_MAPPING = {
   'srclang': 'srcLang',
   'srcset': 'srcSet',
   'tabindex': 'tabIndex',
-  'usemap': 'useMap'
+  'usemap': 'useMap',
+  'viewbox': 'viewBox',
+  'preserveaspectratio': 'preserveAspectRatio'
 }
 var ELEMENT_ATTRIBUTE_MAPPING = {input: {checked: 'defaultChecked',value: 'defaultValue'}}
 function domAttrToJSX(tag,attrNameCase,attrValue){
