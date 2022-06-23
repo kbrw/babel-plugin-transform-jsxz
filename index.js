@@ -29,17 +29,29 @@ function error(msg,node, path){
   throw err
 }
 
+function isJSXAttribute(name) {
+  if (name === undefined) {
+    return function(attr) { return attr.type === 'JSXAttribute' }
+  } else {
+    return function(attr) { return (attr.type === 'JSXAttribute' && attr.name.name === name) }
+  }
+}
+
+function isJSXSpreadAttribute(attr) {
+  return attr.type === 'JSXSpreadAttribute'
+}
+
 function parseJSXsSpec(path,options,callback){
   var ast = path.node
   var opentag = ast.openingElement
-  var htmlPathAttr = opentag.attributes.filter(function(attr){return attr.name.name == "in"})[0]
+  var htmlPathAttr = opentag.attributes.filter(isJSXAttribute("in"))[0]
   if(!htmlPathAttr)
     error("jsxZ attribute 'in' necessary",ast.openingElement,path)
   if(htmlPathAttr.value.type !== 'StringLiteral')
     error("jsxZ 'in' must be an hardcoded string",htmlPathAttr.value,path)
   var htmlPath = htmlPathAttr.value.value
 
-  var selectorAttr = opentag.attributes.filter(function(attr){return attr.name.name == "sel"})[0]
+  var selectorAttr = opentag.attributes.filter(isJSXAttribute("sel"))[0]
   if(selectorAttr && selectorAttr.value.type !== 'StringLiteral')
     error("jsxZ 'sel' must be an hardcoded CSS selector",selectorAttr.value,path)
   var rootSelector = selectorAttr && selectorAttr.value.value
@@ -49,19 +61,21 @@ function parseJSXsSpec(path,options,callback){
     .map(function(c){
       if(c.openingElement.name.name !== "Z")
         error("Only accepted childs for jsxZ are 'Z'",c.openingElement,path)
-      var selectorAttr = c.openingElement.attributes.filter(function(attr){return attr.name.name == "sel"})[0]
+      var selectorAttr = c.openingElement.attributes.filter(isJSXAttribute("sel"))[0]
       if(!selectorAttr || selectorAttr.value.type !== 'StringLiteral')
         error("Z 'sel' attribute is mandatory and must be a hardcoded CSS selector",selectorAttr && selectorAttr.value || c.openingElement,path)
 
-      var tagAttr = c.openingElement.attributes.filter(function(attr){return attr.name.name == "tag"})[0]
+      var tagAttr = c.openingElement.attributes.filter(isJSXAttribute("tag"))[0]
       var tag = tagAttr && tagAttr.value.value
 
-      var otherAttrs = c.openingElement.attributes.filter(function(attr){ return attr.name.name !== 'tag' && attr.name.name !== 'sel'})
+      var otherAttrs = c.openingElement.attributes
+        .filter(function(attr){ return !isJSXAttribute('tag')(attr) && !isJSXAttribute('sel')(attr) })
       return {selector: selectorAttr.value.value, tag: tag, attrs: otherAttrs, node: c,selNode: selectorAttr.value}
     })
-  var tagAttr = ast.openingElement.attributes.filter(function(attr){return attr.name.name == "tag"})[0]
+  var tagAttr = ast.openingElement.attributes.filter(isJSXAttribute("tag"))[0]
   var tag = tagAttr && tagAttr.value.value
-  var otherAttrs = ast.openingElement.attributes.filter(function(attr){ return attr.name.name !== 'tag' && attr.name.name !== 'sel' && attr.name.name !== "in"})
+  var otherAttrs = ast.openingElement.attributes
+    .filter(function(attr){ return !isJSXAttribute('tag')(attr) && !isJSXAttribute('sel')(attr) && !isJSXAttribute("in")(attr) })
   transfos.push({tag: tag, attrs: otherAttrs})
 
   if (htmlPath.indexOf(".html", htmlPath.length - 5) === -1){
@@ -250,9 +264,13 @@ function genSwapMap(attrs,nodeIndex){
 
 function alterAttributes(path,transfo,swapMap){
   var attrsPath = path.get("attributes")
-  removeOverwrittenAttrs(attrsPath,transfo.attrs)
+  removeOverwrittenAttrs(attrsPath,transfo.attrs
+    .filter(function(attr) { return !isJSXSpreadAttribute(attr) }) // removeOverwrittenAttrs cannot handle spread props, so we remove them from its arguments.
+  )
   transfo.attrs.filter(function(attr){
-    return !(attr.value.type == "JSXExpressionContainer" && attr.value.expression.type == "Identifier" && attr.value.expression.name == "undefined")
+    // We don't want to keep attributes that have the the expression `undefined` inside.
+    // We want to keep the spread attributes though.
+    return isJSXSpreadAttribute(attr) || !(attr.value.type == "JSXExpressionContainer" && attr.value.expression.type == "Identifier" && attr.value.expression.name == "undefined")
   }).map(function(attr){
     path.pushContainer("attributes",attr)
   })
