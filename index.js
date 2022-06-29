@@ -245,8 +245,7 @@ function attributesMap(attrs,nameFun,valueFun){
   attrs.forEach(function(attr){
     // Only ignore {...props} for now, if React add something more it'll crash at that time
     if (isJSXSpreadAttribute(attr)) { return }
-    map[nameFun && nameFun(attr.name.name) || attr.name.name] =
-      valueFun && valueFun(attr.value) || attr.value
+    map[nameFun(attr.name.name)] = valueFun(attr.value)
   })
   return map
 }
