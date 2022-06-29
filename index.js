@@ -243,6 +243,8 @@ function searchTransfosByTagIndex(jsxZ,rootdom){
 function attributesMap(attrs,nameFun,valueFun){
   map = {}
   attrs.forEach(function(attr){
+    // Only ignore {...props} for now, if React add something more it'll crash at that time
+    if (isJSXSpreadAttribute(attr)) { return }
     map[nameFun && nameFun(attr.name.name) || attr.name.name] =
       valueFun && valueFun(attr.value) || attr.value
   })
@@ -251,8 +253,9 @@ function attributesMap(attrs,nameFun,valueFun){
 
 function removeOverwrittenAttrs(attrsPath,newAttrs){
   var newAttrsSet = attributesMap(newAttrs,function(name){return name},function(_){return true})
-  attrsPath.forEach(function(attr){
-    if(newAttrsSet[attr.node.name.name]) attr.remove()
+  attrsPath.forEach(function(attr) {
+    if (isJSXSpreadAttribute(attr)) { return }
+    if (newAttrsSet[attr.node.name.name]) { attr.remove() }
   })
 }
 
@@ -264,13 +267,17 @@ function genSwapMap(attrs,nodeIndex){
 
 function alterAttributes(path,transfo,swapMap){
   var attrsPath = path.get("attributes")
-  removeOverwrittenAttrs(attrsPath,transfo.attrs
-    .filter(function(attr) { return !isJSXSpreadAttribute(attr) }) // removeOverwrittenAttrs cannot handle spread props, so we remove them from its arguments.
-  )
+  removeOverwrittenAttrs(attrsPath,transfo.attrs)
   transfo.attrs.filter(function(attr){
-    // We don't want to keep attributes that have the the expression `undefined` inside.
-    // We want to keep the spread attributes though.
-    return isJSXSpreadAttribute(attr) || !(attr.value.type == "JSXExpressionContainer" && attr.value.expression.type == "Identifier" && attr.value.expression.name == "undefined")
+    if (isJSXAttribute()(attr)) {
+      // We don't want to keep attributes that have the the expression `undefined` inside.
+      // Why does it matter though ?
+      if (attr.value.type == "JSXExpressionContainer" && attr.value.expression.type == "Identifier" && attr.value.expression.name == "undefined") {
+        return false
+      }
+    }
+    // We want to keep the spread attributes though. And other stuffs eventually.
+    return true
   }).map(function(attr){
     path.pushContainer("attributes",attr)
   })
@@ -342,8 +349,8 @@ function domAstZTransfo(jsxzPath,jsxZ,dom){
   var transfosByTagIndex = searchTransfosByTagIndex(jsxZ,dom)
   var do_transform_path = function(subpath){
     if (transfoIndexed=transfosByTagIndex[subpath.node.tagIndex]){
-      var transfo = transfoIndexed.transfo,
-          swapMap = genSwapMap(subpath.node.openingElement.attributes,transfoIndexed.i)
+      var transfo = transfoIndexed.transfo
+      var swapMap = genSwapMap(subpath.node.openingElement.attributes,transfoIndexed.i)
       alterAttributes(subpath.get("openingElement"),transfo,swapMap)
       alterTag(subpath,transfo,swapMap)
       alterChildren(subpath,transfo,swapMap)
