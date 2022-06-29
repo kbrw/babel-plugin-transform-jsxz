@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.1] 2022-06-29
+
+### Fixed
+
+- More cases of props spread are handled.
+
 ## [1.1.0] - 2022-06-23
 
 ### Added
