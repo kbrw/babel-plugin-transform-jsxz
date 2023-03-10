@@ -181,7 +181,19 @@ var ATTRIBUTE_MAPPING = {
   'tabindex': 'tabIndex',
   'usemap': 'useMap',
   'viewbox': 'viewBox',
-  'preserveaspectratio': 'preserveAspectRatio'
+  'preserveaspectratio': 'preserveAspectRatio',
+  'clip-rule': 'clipRule',
+  'fill-rule': 'fillRule',
+  'stroke-dasharray': 'strokeDasharray',
+  'stroke-dashoffset': 'strokeDashoffset',
+  'stroke-linecap': 'strokeLinecap',
+  'stroke-linejoin': 'strokeLinejoin',
+  'stroke-miterlimit': 'strokeMiterlimit',
+  'stroke-opacity': 'strokeOpacity',
+  'stroke-width': 'strokeWidth',
+  'text-anchor': 'textAnchor',
+  'text-decoration': 'textDecoration',
+  'text-rendering': 'textRendering',
 }
 var ELEMENT_ATTRIBUTE_MAPPING = {input: {checked: 'defaultChecked',value: 'defaultValue'}}
 function domAttrToJSX(tag,attrNameCase,attrValue){

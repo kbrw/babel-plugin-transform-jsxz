@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.2] 2023-03-10
+
+### Fixed
+
+- Map SVG html attributes to JSX attributes.
+
 ## [1.1.1] 2022-06-29
 
 ### Fixed
