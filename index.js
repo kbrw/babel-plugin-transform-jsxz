@@ -68,14 +68,20 @@ function parseJSXsSpec(path,options,callback){
       var tagAttr = c.openingElement.attributes.filter(isJSXAttribute("tag"))[0]
       var tag = tagAttr && tagAttr.value.value
 
+      var replaceAttr = c.openingElement.attributes.filter(isJSXAttribute("replace"))[0]
+      var replace = replaceAttr && replaceAttr.value.value === "true"
+
+      var ifAttr = c.openingElement.attributes.filter(isJSXAttribute("if"))[0]
+      var ifExpr = ifAttr && ifAttr.value.expression
+
       var otherAttrs = c.openingElement.attributes
-        .filter(function(attr){ return !isJSXAttribute('tag')(attr) && !isJSXAttribute('sel')(attr) })
-      return {selector: selectorAttr.value.value, tag: tag, attrs: otherAttrs, node: c,selNode: selectorAttr.value}
+        .filter(function(attr){ return ["tag","sel","if","replace"].indexOf(attr.name.name) === -1 })
+      return {selector: selectorAttr.value.value, tag: tag, attrs: otherAttrs, node: c,selNode: selectorAttr.value, replace: replace, ifExpr: ifExpr}
     })
   var tagAttr = ast.openingElement.attributes.filter(isJSXAttribute("tag"))[0]
   var tag = tagAttr && tagAttr.value.value
   var otherAttrs = ast.openingElement.attributes
-    .filter(function(attr){ return !isJSXAttribute('tag')(attr) && !isJSXAttribute('sel')(attr) && !isJSXAttribute("in")(attr) })
+    .filter(function(attr){ return ["tag","sel","in"].indexOf(attr.name.name) === -1 })
   transfos.push({tag: tag, attrs: otherAttrs})
 
   if (htmlPath.indexOf(".html", htmlPath.length - 5) === -1){
@@ -235,6 +241,12 @@ function domToAst(dom,tagIndex){
   return ast
 }
 
+/**
+ *
+ * @param {*} jsxZ the jsxZ spec build with the parseJSXsSpec function
+ * @param {*} rootdom the root dom of the html file
+ * @returns a mapping between the tagIndex of dom nodes and the transfos to apply
+ */
 function searchTransfosByTagIndex(jsxZ,rootdom){
   var map = {}
   jsxZ.transfos.map(function(transfo){
@@ -308,8 +320,14 @@ function alterTag(path,transfo,swapMap){
   }
 }
 
+/**
+ * Handle ChildrenZ
+ * @param {*} path a path in the source HTML AST, selected by a Z or JSXZ element
+ * @param {*} transfo the transfo to apply. transfo.node if the Z element AST node. transfo.node is undefined for the JSXZ element itself
+ * @param {*} swapMap
+ */
 function alterChildren(path,transfo,swapMap){
-  if(transfo.node){ // no children alteration if no "node" transfo attribute
+  if(transfo.node){ // no children alteration if no "node" transfo attribute, this is the case for the transfo of the JSXZ element itself
     var childrenz = path.node.children.map(t.cloneDeep)
 
     path.get('children').map(function(childz){ childz.remove() })
@@ -356,18 +374,55 @@ function alterChildren(path,transfo,swapMap){
   }
 }
 
+function applyIfExpr(path, transfo) {
+  if (transfo.ifExpr) {
+    const ifExpr = t.cloneDeep(transfo.ifExpr)
+    ifExpr.consequent = path.node
+
+    // This build into `{ifExpr ? path.node : null}`
+    const expr = t.jSXExpressionContainer(
+      t.conditionalExpression(ifExpr, path.node, t.nullLiteral())
+    )
+
+    path.replaceWith(expr)
+  }
+}
+
+function applyReplace(path, transfo) {
+  if (transfo.replace) {
+    path.replaceInline(path.node.children)
+  }
+}
+
+/**
+ * @param {*} jsxzPath the HTML selected by a JSXZ element, as a JSXElement Babel path.
+ * @param {*} jsxZ the jsxZ parsed spec, as returned by the parseJSXsSpec function. Contains the transformations to apply.
+ * @param {*} dom the dom parsed spec, as returned by the htmlparser2 parseDOM function.
+ */
 function domAstZTransfo(jsxzPath,jsxZ,dom){
   var transfosByTagIndex = searchTransfosByTagIndex(jsxZ,dom)
+
   var do_transform_path = function(subpath){
     if (transfoIndexed=transfosByTagIndex[subpath.node.tagIndex]){
+      // Deleting the tagIndex property to avoid applying the same transformation twice,
+      // in case the subpath is moved deeper in the AST (this happen with the if feature
+      // which add a conditional expression around the subpath)
+      delete subpath.node.tagIndex
+
       var transfo = transfoIndexed.transfo
       var swapMap = genSwapMap(subpath.node.openingElement.attributes,transfoIndexed.i)
       alterAttributes(subpath.get("openingElement"),transfo,swapMap)
       alterTag(subpath,transfo,swapMap)
       alterChildren(subpath,transfo,swapMap)
+      applyIfExpr(subpath,transfo)
+      applyReplace(subpath,transfo)
     }
   }
+
+  // First, apply the Z transformations on the JSXZ element itself.
   do_transform_path(jsxzPath)
+
+  // Then, apply the Z transformations on the children of the JSXZ element.
   jsxzPath.traverse({JSXElement: { exit: do_transform_path }})
 }
 
