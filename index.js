@@ -41,6 +41,15 @@ function isJSXSpreadAttribute(attr) {
   return attr.type === 'JSXSpreadAttribute'
 }
 
+/**
+ * Check if a JSX node is empty (only whitespace)
+ */
+function isNodeEmpty(node) {
+  return !node.children.some(function(child) {
+    return child.type !== 'JSXText' || child.value.trim() !== ''
+  })
+}
+
 function parseJSXsSpec(path,options,callback){
   var ast = path.node
   var opentag = ast.openingElement
@@ -60,7 +69,7 @@ function parseJSXsSpec(path,options,callback){
     .filter(function(c){return c.type==='JSXElement'})
     .map(function(c){
       if(c.openingElement.name.name !== "Z")
-        error("Only accepted childs for jsxZ are 'Z'",c.openingElement,path)
+        return null
       var selectorAttr = c.openingElement.attributes.filter(isJSXAttribute("sel"))[0]
       if(!selectorAttr || selectorAttr.value.type !== 'StringLiteral')
         error("Z 'sel' attribute is mandatory and must be a hardcoded CSS selector",selectorAttr && selectorAttr.value || c.openingElement,path)
@@ -78,11 +87,25 @@ function parseJSXsSpec(path,options,callback){
         .filter(function(attr){ return ["tag","sel","if","replace"].indexOf(attr.name.name) === -1 })
       return {selector: selectorAttr.value.value, tag: tag, attrs: otherAttrs, node: c,selNode: selectorAttr.value, replace: replace, ifExpr: ifExpr}
     })
+    .filter(function(c){return c !== null})
+
   var tagAttr = ast.openingElement.attributes.filter(isJSXAttribute("tag"))[0]
   var tag = tagAttr && tagAttr.value.value
   var otherAttrs = ast.openingElement.attributes
     .filter(function(attr){ return ["tag","sel","in"].indexOf(attr.name.name) === -1 })
-  transfos.push({tag: tag, attrs: otherAttrs})
+
+  var rootTransfoNode = null
+  if (transfos.length === 0 && !isNodeEmpty(path.node)){
+    rootTransfoNode = path.node
+  }
+
+  const rootTransfo = {
+    tag: tag,
+    attrs: otherAttrs,
+    node: rootTransfoNode
+  }
+
+  transfos.push(rootTransfo)
 
   if (htmlPath.indexOf(".html", htmlPath.length - 5) === -1){
     htmlPath = htmlPath + ".html"
