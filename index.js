@@ -423,6 +423,9 @@ function applyIfExpr(path, transfo) {
 
 function applyReplace(path, transfo) {
   if (transfo.replace) {
+    if (transfo.attrs.length > 0 || transfo.tag || transfo.ifExpr) {
+      console.warn("Warning: your are using the replace feature with other transformations on sel", transfo.selector)
+    }
     path.replaceInline(path.node.children)
   }
 }
