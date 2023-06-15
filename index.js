@@ -50,6 +50,16 @@ function isNodeEmpty(node) {
   })
 }
 
+function isZReservedAttr(name) {
+  const reserved = ["tag","sel","if","replace"]
+  return reserved.includes(name)
+}
+
+function isJSXZReservedAttr(name) {
+  const reserved = ["tag","sel","in"]
+  return reserved.includes(name)
+}
+
 function parseJSXsSpec(path,options,callback){
   var ast = path.node
   var opentag = ast.openingElement
@@ -84,7 +94,7 @@ function parseJSXsSpec(path,options,callback){
       var ifExpr = ifAttr && ifAttr.value.expression
 
       var otherAttrs = c.openingElement.attributes
-        .filter(function(attr){ return ["tag","sel","if","replace"].indexOf(attr.name.name) === -1 })
+        .filter(function(attr){ return !isZReservedAttr(attr.name.name) })
       return {selector: selectorAttr.value.value, tag: tag, attrs: otherAttrs, node: c,selNode: selectorAttr.value, replace: replace, ifExpr: ifExpr}
     })
     .filter(function(c){return c !== null})
@@ -92,7 +102,7 @@ function parseJSXsSpec(path,options,callback){
   var tagAttr = ast.openingElement.attributes.filter(isJSXAttribute("tag"))[0]
   var tag = tagAttr && tagAttr.value.value
   var otherAttrs = ast.openingElement.attributes
-    .filter(function(attr){ return ["tag","sel","in"].indexOf(attr.name.name) === -1 })
+    .filter(function(attr){ return !isJSXZReservedAttr(attr.name.name) })
 
   var rootTransfoNode = null
   if (transfos.length === 0 && !isNodeEmpty(path.node)){
