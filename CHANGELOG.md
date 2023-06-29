@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.1] 2023-06-29
+
+### Fixed
+
+- Fix a bug where the plugin would crash when using spread attributes on a Z or JSXZ element.
+
 ## [1.2.0] 2023-06-12
 
 This update is retrocompatible with previous versions: you can upgrade your version of `babel-plugin-transform-jsxz` without changing your code.
@@ -98,7 +104,8 @@ New features are available to make JSXZ easier to use:
 Changelog format inspired by [keep-a-changelog]
 
 [keep-a-changelog]: https://github.com/olivierlacan/keep-a-changelog
-[unreleased]: https://github.com/kbrw/babel-plugin-transform-jsxz/compare/v1.2.0...HEAD
+[unreleased]: https://github.com/kbrw/babel-plugin-transform-jsxz/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/kbrw/babel-plugin-transform-jsxz/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/kbrw/babel-plugin-transform-jsxz/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/kbrw/babel-plugin-transform-jsxz/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/kbrw/babel-plugin-transform-jsxz/compare/v1.1.0...v1.1.1
